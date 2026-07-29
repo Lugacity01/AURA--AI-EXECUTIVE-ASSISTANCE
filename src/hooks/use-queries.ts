@@ -41,11 +41,11 @@ export function useInboxStats() {
   return useQuery<InboxStats>({
     queryKey: ["inboxStats"],
     queryFn: async () => {
-      const res = await fetch("/api/inbox/stats");
+      const res = await fetch(`/api/inbox/stats?_t=${Date.now()}`);
       if (!res.ok) throw new Error("Failed to fetch inbox stats");
       return res.json();
     },
-    refetchInterval: 10000, // Auto-refresh stats counts every 10 seconds
+    refetchInterval: 5000, // Auto-refresh stats counts every 5 seconds
   });
 }
 
@@ -54,11 +54,11 @@ export function useDraftsList() {
   return useQuery<DraftItem[]>({
     queryKey: ["drafts"],
     queryFn: async () => {
-      const res = await fetch("/api/drafts");
+      const res = await fetch(`/api/drafts?_t=${Date.now()}`);
       if (!res.ok) throw new Error("Failed to fetch drafts list");
       return res.json();
     },
-    refetchInterval: 10000, // Auto-refresh drafts list every 10 seconds
+    refetchInterval: 5000, // Auto-refresh drafts list every 5 seconds
   });
 }
 
@@ -67,7 +67,7 @@ export function useApprovalsList() {
   return useQuery<EmailApprovalItem[]>({
     queryKey: ["approvals"],
     queryFn: async () => {
-      const res = await fetch("/api/email");
+      const res = await fetch(`/api/email?_t=${Date.now()}`);
       if (!res.ok) throw new Error("Failed to fetch approvals emails");
       const emails = await res.json();
       

@@ -1,0 +1,339 @@
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum MessageSender {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum EmailStatus {
+  UNREAD
+  READ
+  NEEDS_APPROVAL
+  APPROVED
+  SENT
+  IGNORED
+  ARCHIVED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model User {
+  id            String          @id @map("_id")
+  name          String
+  email         String          @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+  sessions      Session[]
+  accounts      Account[]
+  conversations Conversation[]
+  feedbacks     Feedback[]
+  
+  // Profile extensions
+  title         String?
+  organization  String?
+  
+  // Extensions
+  emails        Email[]
+  contacts      ContactMemory[]
+  integrations  Integration[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @map("_id")
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @map("_id")
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @map("_id")
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+model Conversation {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  visitorId   String?   // Anonymous sessions
+  userId      String?   // Removed @db.ObjectId
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  messages    Message[]
+
+  @@index([visitorId])
+  @@index([userId])
+  @@map("conversation")
+}
+
+model Message {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String        @db.ObjectId
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         MessageSender
+  text           String
+  sources        String[]      // citation list
+  confidence     String?
+  latency        String?
+  createdAt      DateTime      @default(now())
+  feedbacks      Feedback[]
+
+  @@map("message")
+}
+
+model KnowledgeDocument {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  slug        String
+  version     String
+  checksum    String   // MD5 checksum of the parsed file
+  isActive    Boolean  @default(false)
+  filename    String
+  mimeType    String
+  fileSize    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  chunks      DocumentChunk[]
+
+  @@map("knowledge_document")
+}
+
+model DocumentChunk {
+  id                 String            @id @default(auto()) @map("_id") @db.ObjectId
+  documentId         String            @db.ObjectId
+  document           KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  articleId          String
+  chunkId            String
+  title              String
+  section            String
+  slug               String
+  category           String
+  confidence         String
+  searchBoost        Int
+  audience           String[]
+  tags               String[]
+  aliases            String[]
+  canonicalQuestions String[]
+  related            String[]
+  content            String
+  embedding          Float[]           // Vector embeddings
+  createdAt          DateTime          @default(now())
+
+  @@index([articleId])
+  @@index([chunkId])
+  @@map("document_chunk")
+}
+
+model Feedback {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  messageId  String   @db.ObjectId
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId     String?  // Removed @db.ObjectId
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPositive Boolean
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@map("feedback")
+}
+
+model Email {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  threadId       String       // Gmail Thread ID
+  gmailId        String       @unique // Gmail Message ID
+  historyId      String?
+  labelIds       String[]
+  snippet        String?
+  internalDate   DateTime?
+  hasAttachments Boolean      @default(false)
+  from           String
+  fromName       String?
+  to             String
+  subject        String
+  body           String       // Legacy/general body field
+  bodyText       String?      // Plain Text body (for AI pipeline)
+  bodyHtml       String?      // HTML body (for UI rendering)
+  summary        String?      // AI-generated summary
+  status         EmailStatus  @default(UNREAD)
+  receivedAt     DateTime
+  processedAt    DateTime     @default(now())
+  
+  // Relations
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  draft          EmailDraft?
+  
+  @@index([userId])
+  @@index([status])
+  @@map("email")
+}
+
+model EmailDraft {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  emailId        String       @db.ObjectId @unique
+  email          Email        @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  draftContent   String
+  riskLevel      RiskLevel    @default(LOW)
+  riskAnalysis   String?      // AI-generated description of risk assessment
+  confidence     Float        // AI confidence score
+  isApproved     Boolean      @default(false)
+  approvedAt     DateTime?
+  approvedBy     String?      // Reference to the user if approved
+
+  // Specification compatibility fields
+  userId         String?
+  recipient      String?
+  subject        String?
+  body           String?
+  status         String?      // Draft, Ready, Approved, Sent, Archived
+  threadId       String?
+  createdAt      DateTime     @default(now())
+  
+  @@map("email_draft")
+}
+
+model ContactMemory {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  email          String       @unique
+  name           String?
+  company        String?
+  relationship   String?      // e.g. Partner, Client, Team Member
+  preferences    String?      // e.g. "Prefers concise updates"
+  memorySummary  String?      // Context about past interactions
+  lastInteractionAt DateTime  @default(now())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("contact_memory")
+}
+
+model Integration {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  provider       String       // e.g. "GMAIL", "CALENDAR", "SLACK", "NOTION"
+  isActive       Boolean      @default(true)
+  accessToken    String?
+  refreshToken   String?
+  expiresAt      DateTime?
+  settings       String?      // JSON string of custom settings (e.g. auto-reply rules)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("integration")
+}
+
+model EmailConnection {
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String
+  provider           String    // e.g. "GMAIL"
+  providerUserId     String?
+  emailAddress       String
+  displayName        String?
+  avatarUrl          String?
+  accessToken        String?
+  refreshToken       String?
+  expiresAt          DateTime?
+  scope              String?
+  isActive           Boolean   @default(true)
+  isSyncing          Boolean   @default(false)
+  syncStartedAt      DateTime?
+  lastSuccessfulSync DateTime?
+  connectedAt        DateTime  @default(now())
+  updatedAt          DateTime  @default(now()) @updatedAt
+  lastSyncedAt       DateTime?
+  lastHistoryId      String?
+
+  @@index([userId])
+  @@map("email_connection")
+}
+
+model Contact {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String
+  name            String
+  email           String    @unique
+  company         String?
+  phone           String?
+  notes           String?
+  lastInteraction DateTime  @default(now())
+
+  @@index([userId])
+  @@map("contact")
+}
+
+model AutomationRule {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String
+  title        String
+  desc         String
+  enabled      Boolean   @default(false)
+  lastExecuted String?
+  successRate  String?
+
+  @@index([userId])
+  @@map("automation_rule")
+}
+
+model AgentAction {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String
+  action       String    // e.g. "Read Email", "Draft Created", "Email Sent", "Approval Requested"
+  desc         String
+  timestamp    DateTime  @default(now())
+  reason       String?
+  toolUsed     String?
+  duration     String?
+  outcome      String?
+  status       String?
+
+  @@index([userId])
+  @@map("agent_action")
+}

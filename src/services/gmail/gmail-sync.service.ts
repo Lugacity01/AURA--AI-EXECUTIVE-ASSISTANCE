@@ -162,7 +162,8 @@ export class GmailSyncService {
             });
             summary.created++;
 
-            // Auto-sync sender to Contacts database
+            // Auto-sync sender to Contacts database (temporarily disabled per user request)
+            /*
             try {
               const senderEmail = prismaInput.from;
               const senderName = prismaInput.fromName || senderEmail.split("@")[0];
@@ -191,6 +192,7 @@ export class GmailSyncService {
             } catch (contactErr) {
               console.error("Failed to auto-create contact on sync:", contactErr);
             }
+            */
           }
         } catch (msgErr) {
           console.error(`Failed to sync message ${msgId}:`, msgErr);

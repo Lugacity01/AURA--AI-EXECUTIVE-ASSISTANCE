@@ -1,0 +1,456 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle } from "lucide-react";
+import Link from "next/link";
+
+export default function CampaignDetailsPage() {
+  const { id } = useParams() as { id: string };
+  const router = useRouter();
+  
+  const [campaign, setCampaign] = useState<any>(null);
+  const [followUps, setFollowUps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Follow-up modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [followUpType, setFollowUpType] = useState("REMINDER");
+  const [recipientFilter, setRecipientFilter] = useState("PENDING_RESPONSE");
+  const [instructions, setInstructions] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Preview State
+  const [hasPreview, setHasPreview] = useState(false);
+  const [previewSubject, setPreviewSubject] = useState("");
+  const [previewBody, setPreviewBody] = useState("");
+
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCampaignDetails();
+  }, [id]);
+
+  const fetchCampaignDetails = async () => {
+    try {
+      const [campRes, fupRes] = await Promise.all([
+        fetch(`/api/campaigns/${id}`),
+        fetch(`/api/campaigns/${id}/follow-ups`)
+      ]);
+      
+      if (!campRes.ok) throw new Error("Failed to fetch campaign");
+      
+      const data = await campRes.json();
+      setCampaign(data);
+
+      if (fupRes.ok) {
+        const followUpsData = await fupRes.json();
+        setFollowUps(followUpsData);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGeneratePreview = async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/follow-up/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          followUpType,
+          additionalInstructions: instructions
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to generate preview");
+      }
+
+      const { subject, body } = await res.json();
+      setPreviewSubject(subject);
+      setPreviewBody(body);
+      setHasPreview(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCreateFollowUp = async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/follow-up`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          followUpType,
+          recipientFilter,
+          additionalInstructions: instructions,
+          masterSubject: hasPreview ? previewSubject : undefined,
+          masterBody: hasPreview ? previewBody : undefined
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create follow-up");
+      }
+
+      // Automatically close modal and refresh
+      setIsModalOpen(false);
+      setInstructions("");
+      setHasPreview(false);
+      setIsGenerating(false);
+      
+      // Refresh the timeline data to show the generating/scheduled follow-up
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      setIsGenerating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full bg-[#0F0F12] items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!campaign) {
+    return (
+      <div className="flex flex-col h-full bg-[#0F0F12] items-center justify-center text-zinc-400">
+        Campaign not found.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#0F0F12]">
+      {/* Header */}
+      <div className="border-b border-white/10 px-8 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard/campaigns" className="text-zinc-400 hover:text-white transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-medium text-white flex items-center gap-3">
+              {campaign.title}
+              <span className={`text-xs px-2.5 py-1 rounded-md uppercase tracking-wider font-semibold ${
+                campaign.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
+                campaign.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400' :
+                'bg-blue-500/10 text-blue-400'
+              }`}>
+                {campaign.status}
+              </span>
+            </h1>
+            <p className="text-sm text-zinc-400 mt-1">Created on {new Date(campaign.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+        
+        {campaign.status === 'DRAFT' && (
+          <button 
+            onClick={() => router.push(`/dashboard/campaigns/new?id=${campaign.id}`)}
+            className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2"
+          >
+            <Play className="w-4 h-4" /> Continue Editing
+          </button>
+        )}
+        {campaign.status === 'COMPLETED' && (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+          >
+            <Plus className="w-4 h-4" /> Create Follow-up
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-auto p-8 flex flex-col gap-8">
+        
+        {/* Campaign Timeline */}
+        {followUps.length > 0 && (
+          <div>
+            <h2 className="text-lg font-medium text-white mb-4">Campaign Timeline</h2>
+            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden p-6">
+              <div className="flex flex-col gap-4">
+                
+                {/* Original Campaign */}
+                <div className="flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-medium flex items-center gap-2">
+                      Initial Campaign 
+                      <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded uppercase tracking-wider">Completed</span>
+                    </h4>
+                    <p className="text-sm text-zinc-400 mt-0.5">
+                      {new Date(campaign.createdAt).toLocaleDateString()} • {campaign.totalRecipients} recipients
+                    </p>
+                  </div>
+                </div>
+
+                {/* Follow-ups */}
+                {followUps.map((fu, idx) => (
+                  <div key={fu.id} className="flex items-center gap-4 relative">
+                    {/* Line connecting */}
+                    <div className="absolute left-4 top-[-24px] bottom-6 w-px bg-white/10" />
+                    
+                    <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 text-zinc-400 flex items-center justify-center shrink-0 z-10">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 bg-white/5 hover:bg-white/[0.07] transition cursor-pointer border border-white/10 rounded-xl p-4 flex items-center justify-between" onClick={() => router.push(`/dashboard/campaigns/${fu.id}`)}>
+                      <div>
+                        <h4 className="text-white font-medium flex items-center gap-2">
+                          {fu.title}
+                          <span className={`text-xs px-2 py-0.5 rounded uppercase tracking-wider ${
+                            fu.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
+                            fu.status === 'DRAFT' || fu.status === 'READY' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-blue-500/10 text-blue-400'
+                          }`}>{fu.status}</span>
+                        </h4>
+                        <p className="text-sm text-zinc-400 mt-0.5">
+                          {fu.followUpType} • {fu.totalRecipients} recipients
+                        </p>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-zinc-500" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Analytics row */}
+        <div className="grid grid-cols-4 gap-6">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Total Recipients</p>
+            <h3 className="text-3xl font-semibold text-white">{campaign.totalRecipients || 0}</h3>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><Activity className="w-4 h-4" /> Emails Sent</p>
+            <h3 className="text-3xl font-semibold text-white">{campaign.emailsSent || 0}</h3>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><Clock className="w-4 h-4" /> Opened</p>
+            <h3 className="text-3xl font-semibold text-white">{campaign.opened || 0}</h3>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Replied</p>
+            <h3 className="text-3xl font-semibold text-white">{campaign.replied || 0}</h3>
+          </div>
+        </div>
+
+        {/* Recipients Table */}
+        <div>
+          <h2 className="text-lg font-medium text-white mb-4">Recipient List</h2>
+          <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+            <table className="w-full text-left text-sm text-zinc-400">
+              <thead className="bg-white/5 border-b border-white/10 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Contact Name</th>
+                  <th className="px-6 py-4 font-medium">Email</th>
+                  <th className="px-6 py-4 font-medium">Approval Status</th>
+                  <th className="px-6 py-4 font-medium">Send Status</th>
+                  <th className="px-6 py-4 font-medium text-right">View Draft</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {(!campaign.recipients || campaign.recipients.length === 0) ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-zinc-500">
+                      No recipients added to this campaign yet.
+                    </td>
+                  </tr>
+                ) : (
+                  campaign.recipients.map((recipient: any) => (
+                    <tr key={recipient.id} className="hover:bg-white/[0.02] transition">
+                      <td className="px-6 py-4 text-white font-medium">{recipient.contact?.name || "Unknown"}</td>
+                      <td className="px-6 py-4">{recipient.contact?.email || "-"}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-md text-xs ${
+                          recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :
+                          recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
+                          'bg-white/10 text-zinc-300'
+                        }`}>
+                          {recipient.approvalStatus}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-md text-xs ${
+                          recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400' :
+                          recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                          'bg-white/10 text-zinc-300'
+                        }`}>
+                          {recipient.sendStatus}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full">
+                          Preview <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Follow-up Creation Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-lg font-medium text-white">Create Follow-up</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/10 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-6 overflow-y-auto">
+              {error && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <p>{error}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Follow-up Type</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {['REMINDER', 'FOLLOW_UP', 'CUSTOM'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => { setFollowUpType(type); setHasPreview(false); }}
+                      className={`py-2 px-3 rounded-lg text-sm font-medium border transition ${
+                        followUpType === type 
+                          ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' 
+                          : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      {type.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Recipients</label>
+                <select 
+                  className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                  value={recipientFilter}
+                  onChange={(e) => setRecipientFilter(e.target.value)}
+                >
+                  <option value="ALL">All Recipients</option>
+                  <option value="PENDING_RESPONSE">Pending Response (No Reply)</option>
+                  {/* Custom selection would require a multi-select, keeping it simple for now */}
+                </select>
+                <p className="text-xs text-zinc-500 mt-2">
+                  {recipientFilter === 'PENDING_RESPONSE' 
+                    ? "Only targets recipients who were sent the initial email but haven't replied."
+                    : "Targets everyone from the original campaign."}
+                </p>
+              </div>
+
+              {hasPreview ? (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">Generated Subject</label>
+                    <input 
+                      type="text"
+                      className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                      value={previewSubject}
+                      onChange={(e) => setPreviewSubject(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">Generated Body</label>
+                    <textarea 
+                      className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-48"
+                      value={previewBody}
+                      onChange={(e) => setPreviewBody(e.target.value)}
+                    />
+                    <p className="text-xs text-zinc-500 mt-2">
+                      You can edit this draft before sending. Note that [Name] will be replaced dynamically.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Additional AI Instructions</label>
+                  <textarea 
+                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 resize-none h-32"
+                    placeholder="e.g. Mention that seats are limited. Keep the tone friendly. Reference the previous invitation."
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
+              <button 
+                onClick={() => { setIsModalOpen(false); setHasPreview(false); }}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition"
+                disabled={isGenerating}
+              >
+                Cancel
+              </button>
+              
+              {!hasPreview ? (
+                <button 
+                  onClick={handleGeneratePreview}
+                  disabled={isGenerating}
+                  className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      Generate Draft <ChevronRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button 
+                  onClick={handleCreateFollowUp}
+                  disabled={isGenerating}
+                  className="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      Send Message
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

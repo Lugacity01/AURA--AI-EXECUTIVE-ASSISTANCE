@@ -2,18 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { useSession, signIn } from "@/lib/auth-client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Settings, 
-  Sparkles, 
-  Calendar, 
-  MessageSquare, 
-  BookOpen, 
-  Lock, 
-  Check, 
-  ToggleLeft, 
-  ToggleRight, 
+import {
+  Settings,
+  Sparkles,
+  Calendar,
+  MessageSquare,
+  BookOpen,
+  Lock,
+  Check,
+  ToggleLeft,
+  ToggleRight,
   Database,
   ArrowRight,
   ShieldAlert,
@@ -24,65 +23,14 @@ import {
   Eye,
   Activity,
   Loader2,
-  Mail,
-  Edit,
-  Save,
-  X,
-  RefreshCw
+  Mail
 } from "lucide-react";
 
 export default function IntegrationsDashboard() {
   const { data: session } = useSession();
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"profile" | "accounts" | "ai" | "automation" | "security">("automation");
   const [toast, setToast] = useState("");
   const [rules, setRules] = useState<any[]>([]);
-
-  // Local Profile Edit State
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editOrg, setEditOrg] = useState("");
-
-  // Query: Get user profile settings
-  const { data: profile = { title: "", organization: "" } } = useQuery({
-    queryKey: ["userProfile"],
-    queryFn: async () => {
-      const res = await fetch("/api/user");
-      if (!res.ok) throw new Error("Failed to fetch user profile");
-      return res.json();
-    }
-  });
-
-  // Mutation: Save user profile updates
-  const updateProfileMutation = useMutation({
-    mutationFn: async (payload: { title: string; organization: string }) => {
-      const res = await fetch("/api/user", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error("Failed to update profile settings.");
-      return res.json();
-    },
-    onSuccess: () => {
-      setToast("Profile settings updated successfully.");
-      queryClient.invalidateQueries({ queryKey: ["userProfile"] });
-      setIsEditingProfile(false);
-    },
-    onError: (err: any) => {
-      setToast(err.message || "Failed to commit profile updates.");
-    }
-  });
-
-  const handleStartEdit = () => {
-    setEditTitle(profile.title || "");
-    setEditOrg(profile.organization || "");
-    setIsEditingProfile(true);
-  };
-
-  const handleSaveProfile = () => {
-    updateProfileMutation.mutate({ title: editTitle, organization: editOrg });
-  };
 
   const initials = session?.user?.name
     ? session.user.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
@@ -235,7 +183,7 @@ export default function IntegrationsDashboard() {
 
         {/* Layout grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
+
           {/* Left: Sub-navigation sidebar tabs (4 columns) */}
           <div className="lg:col-span-4 flex flex-col gap-1.5">
             {settingsTabs.map((tab) => {
@@ -244,11 +192,10 @@ export default function IntegrationsDashboard() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`p-3 rounded-xl border flex items-center gap-3 text-xs font-semibold transition-all cursor-pointer text-left ${
-                    active 
-                      ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300 shadow-inner" 
+                  className={`p-3 rounded-xl border flex items-center gap-3 text-xs font-semibold transition-all cursor-pointer text-left ${active
+                      ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300 shadow-inner"
                       : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.01]"
-                  }`}
+                    }`}
                 >
                   <tab.icon className="w-4 h-4 shrink-0" />
                   <span>{tab.name}</span>
@@ -269,105 +216,32 @@ export default function IntegrationsDashboard() {
                   className="flex flex-col gap-6"
                 >
                   <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider block">Profile settings</span>
-                  
-                  <div className="glass-panel p-6 border border-white/[0.06] flex flex-col gap-6 text-left">
-                    <div className="flex items-center justify-between border-b border-white/[0.04] pb-4">
-                      <div className="flex items-center gap-4">
-                        {session?.user?.image ? (
-                          <img src={session.user.image} alt={session.user.name} className="w-12 h-12 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-sm font-semibold text-indigo-300">
-                            {initials}
-                          </div>
-                        )}
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-200 font-display">{session?.user?.name || "User"}</span>
-                          <span className="text-xs text-slate-500 font-mono">{session?.user?.email || "user@email.com"}</span>
+
+                  <div className="glass-panel p-6 border border-white/[0.06] flex flex-col gap-4 text-left">
+                    <div className="flex items-center gap-4 border-b border-white/[0.04] pb-4">
+                      {session?.user?.image ? (
+                        <img src={session.user.image} alt={session.user.name} className="w-12 h-12 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-sm font-semibold text-indigo-300">
+                          {initials}
                         </div>
-                      </div>
-                      
-                      {!isEditingProfile && (
-                        <button
-                          onClick={handleStartEdit}
-                          className="px-3 py-1.5 rounded-xl border border-white/[0.06] bg-white/[0.01] hover:bg-white/[0.04] text-[10px] font-mono text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1 cursor-pointer select-none"
-                        >
-                          <Edit className="w-3 h-3" /> Edit Profile
-                        </button>
                       )}
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-200 font-display">{session?.user?.name || "User"}</span>
+                        <span className="text-xs text-slate-500 font-mono">{session?.user?.email || "user@email.com"}</span>
+                      </div>
                     </div>
-                    
-                    {isEditingProfile ? (
-                      <div className="flex flex-col gap-5">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-[9px] text-slate-500 font-mono uppercase">Job Title</label>
-                            <input
-                              type="text"
-                              value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              placeholder="e.g. Founder & CEO"
-                              className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-xs font-sans text-slate-300 focus:outline-none focus:border-indigo-500/50"
-                              disabled={updateProfileMutation.isPending}
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-[9px] text-slate-500 font-mono uppercase">Organization / Company</label>
-                            <input
-                              type="text"
-                              value={editOrg}
-                              onChange={(e) => setEditOrg(e.target.value)}
-                              placeholder="e.g. Apex Technology Partners"
-                              className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-xs font-sans text-slate-300 focus:outline-none focus:border-indigo-500/50"
-                              disabled={updateProfileMutation.isPending}
-                            />
-                          </div>
-                        </div>
-                        
-                        <div className="flex justify-end gap-3 pt-2">
-                          <button
-                            onClick={() => setIsEditingProfile(false)}
-                            disabled={updateProfileMutation.isPending}
-                            className="px-3.5 py-2 rounded-xl border border-white/[0.06] bg-white/[0.01] hover:bg-white/[0.04] text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                          >
-                            <X className="w-3.5 h-3.5" /> Cancel
-                          </button>
-                          <button
-                            onClick={handleSaveProfile}
-                            disabled={updateProfileMutation.isPending}
-                            className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-md shadow-indigo-500/10 transition-all cursor-pointer disabled:opacity-50"
-                          >
-                            {updateProfileMutation.isPending ? (
-                              <>
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
-                              </>
-                            ) : (
-                              <>
-                                <Save className="w-3.5 h-3.5" /> Save Changes
-                              </>
-                            )}
-                          </button>
-                        </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-[9px] text-slate-500 font-mono uppercase block">Title</span>
+                        <span className="text-xs font-semibold text-slate-300 block mt-1 font-sans">Founder / CEO</span>
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-[9px] text-slate-500 font-mono uppercase block">Title</span>
-                          <span className={`text-xs font-semibold block mt-1 font-sans ${
-                            profile.title ? "text-slate-300" : "text-slate-500 italic font-light"
-                          }`}>
-                            {profile.title || "Not specified (Founder / CEO)"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[9px] text-slate-500 font-mono uppercase block">Organization</span>
-                          <span className={`text-xs font-semibold block mt-1 font-sans ${
-                            profile.organization ? "text-slate-300" : "text-slate-500 italic font-light"
-                          }`}>
-                            {profile.organization || "Not specified (Apex Technology Partners)"}
-                          </span>
-                        </div>
+                      <div>
+                        <span className="text-[9px] text-slate-500 font-mono uppercase block">Organization</span>
+                        <span className="text-xs font-semibold text-slate-300 block mt-1 font-sans">Apex Technology Partners</span>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -381,7 +255,7 @@ export default function IntegrationsDashboard() {
                   className="flex flex-col gap-6"
                 >
                   <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider block">Connected Accounts & OAuth</span>
-                  
+
                   <div className="flex flex-col gap-4">
                     {/* Gmail */}
                     <div className="glass-panel p-6 border border-white/[0.06] flex flex-col sm:flex-row items-start justify-between gap-6">
@@ -422,11 +296,10 @@ export default function IntegrationsDashboard() {
                       <button
                         onClick={handleToggleGmail}
                         disabled={loading}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-all shrink-0 ${
-                          gmailStatus === "CONNECTED" 
-                            ? "border-rose-500/20 hover:border-rose-500/35 hover:bg-rose-500/5 text-rose-400" 
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-all shrink-0 ${gmailStatus === "CONNECTED"
+                            ? "border-rose-500/20 hover:border-rose-500/35 hover:bg-rose-500/5 text-rose-400"
                             : "border-indigo-500/20 hover:border-indigo-500/35 hover:bg-indigo-500/5 text-indigo-400"
-                        }`}
+                          }`}
                       >
                         {gmailStatus === "CONNECTED" ? "Disconnect" : "Connect Gmail"}
                       </button>
@@ -454,11 +327,10 @@ export default function IntegrationsDashboard() {
                       </div>
                       <button
                         onClick={() => handleToggleAccount("calendar")}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-all ${
-                          googleCalendarConnected 
-                            ? "border-rose-500/20 hover:border-rose-500/35 hover:bg-rose-500/5 text-rose-400" 
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-all ${googleCalendarConnected
+                            ? "border-rose-500/20 hover:border-rose-500/35 hover:bg-rose-500/5 text-rose-400"
                             : "border-indigo-500/20 hover:border-indigo-500/35 hover:bg-indigo-500/5 text-indigo-400"
-                        }`}
+                          }`}
                       >
                         {googleCalendarConnected ? "Disconnect" : "Connect"}
                       </button>
@@ -486,11 +358,10 @@ export default function IntegrationsDashboard() {
                       </div>
                       <button
                         onClick={() => handleToggleAccount("slack")}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-all ${
-                          slackConnected 
-                            ? "border-rose-500/20 hover:border-rose-500/35 hover:bg-rose-500/5 text-rose-400" 
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-all ${slackConnected
+                            ? "border-rose-500/20 hover:border-rose-500/35 hover:bg-rose-500/5 text-rose-400"
                             : "border-indigo-500/20 hover:border-indigo-500/35 hover:bg-indigo-500/5 text-indigo-400"
-                        }`}
+                          }`}
                       >
                         {slackConnected ? "Disconnect" : "Connect"}
                       </button>
@@ -508,7 +379,7 @@ export default function IntegrationsDashboard() {
                   className="flex flex-col gap-6"
                 >
                   <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider block">AI Custom Guidelines</span>
-                  
+
                   <form onSubmit={handleSaveInstructions} className="glass-panel p-6 border border-white/[0.06] flex flex-col gap-4 text-left">
                     <div>
                       <span className="text-[9px] text-slate-500 font-mono uppercase block">Custom Prompt Instructions</span>
@@ -537,7 +408,7 @@ export default function IntegrationsDashboard() {
                   className="flex flex-col gap-6"
                 >
                   <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider block">Automation Rule Switches</span>
-                  
+
                   {loading ? (
                     <div className="flex flex-col items-center justify-center min-h-[200px]">
                       <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mb-2" />
@@ -546,14 +417,14 @@ export default function IntegrationsDashboard() {
                   ) : (
                     <div className="flex flex-col gap-4 text-left">
                       {rules.map((rule) => (
-                        <div 
-                          key={rule.id} 
+                        <div
+                          key={rule.id}
                           className="glass-panel p-5 border border-white/[0.06] flex items-center justify-between gap-6"
                         >
                           <div className="flex-1 min-w-0">
                             <h4 className="text-xs font-bold text-slate-200 font-display">{rule.title}</h4>
                             <p className="text-[11px] text-slate-400 leading-normal font-light mt-0.5 font-sans">{rule.desc}</p>
-                            
+
                             <div className="flex gap-4 mt-2 font-mono text-[9px] text-slate-500">
                               <div>
                                 <span>Last Executed: </span>
@@ -592,7 +463,7 @@ export default function IntegrationsDashboard() {
                   className="flex flex-col gap-6"
                 >
                   <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider block">Security & Privacy compliance</span>
-                  
+
                   <div className="glass-panel p-6 border border-white/[0.06] flex flex-col gap-4 text-left">
                     <div className="flex items-start gap-3 p-3.5 rounded-xl border border-indigo-500/10 bg-indigo-500/[0.02]">
                       <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />

@@ -22,7 +22,8 @@ import {
   Search,
   MessageSquare,
   Clock,
-  CornerDownLeft
+  CornerDownLeft,
+  Megaphone
 } from "lucide-react";
 
 export default function DashboardLayout({
@@ -100,7 +101,8 @@ export default function DashboardLayout({
     { name: "AI Chat", href: "/dashboard/chat", icon: MessageSquare },
     { name: "Drafts", href: "/dashboard/drafts", icon: Sparkles },
     { name: "Approvals", href: "/dashboard/approvals", icon: ShieldCheck, badge: stats.needsApproval > 0 ? String(stats.needsApproval) : undefined },
-    { name: "Contacts", href: "/dashboard/memory", icon: Users },
+    { name: "Contacts", href: "/dashboard/contacts", icon: Users },
+    { name: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
     { name: "Activity", href: "/dashboard/activity", icon: Clock },
     { name: "Settings", href: "/dashboard/integrations", icon: Settings },
   ];
@@ -111,7 +113,8 @@ export default function DashboardLayout({
     { category: "Navigation", label: "Go to AI Chat Console", type: "page", value: "/dashboard/chat" },
     { category: "Navigation", label: "Go to Drafts Hub", type: "page", value: "/dashboard/drafts" },
     { category: "Navigation", label: "Go to Approvals Center", type: "page", value: "/dashboard/approvals" },
-    { category: "Navigation", label: "Go to Contacts Memory", type: "page", value: "/dashboard/memory" },
+    { name: "Navigation", label: "Go to Contacts", type: "page", value: "/dashboard/contacts" },
+    { name: "Navigation", label: "Go to Campaigns", type: "page", value: "/dashboard/campaigns" },
     { category: "Navigation", label: "Go to Activity Center", type: "page", value: "/dashboard/activity" },
     { category: "Navigation", label: "Go to System Settings", type: "page", value: "/dashboard/integrations" },
     { category: "AI Commands", label: "/summarize - Summarize unread inbox emails", type: "action", value: "summarize" },

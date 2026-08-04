@@ -28,6 +28,56 @@ enum RiskLevel {
   MEDIUM
   HIGH
 }
+enum CampaignStatus {
+  DRAFT
+  GENERATING
+  READY
+  APPROVAL_PENDING
+  APPROVED
+  SCHEDULED
+  SENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  GENERATED
+  APPROVED
+  SENT
+  FAILED
+  OPENED
+  CLICKED
+  REPLIED
+}
+
+enum CampaignType {
+  MEETING
+  NEWSLETTER
+  FOLLOW_UP
+  REMINDER
+  ANNOUNCEMENT
+  OUTREACH
+  RECRUITMENT
+  CUSTOM
+}
+
+enum FollowUpType {
+  REMINDER
+  FOLLOW_UP
+  CUSTOM
+}
+
+enum ContactActivityType {
+  EMAIL_SENT
+  EMAIL_RECEIVED
+  MEETING
+  CAMPAIGN
+  REPLY
+  NOTE
+  AI_INTERACTION
+}
 
 model User {
   id            String          @id @map("_id")
@@ -41,10 +91,6 @@ model User {
   accounts      Account[]
   conversations Conversation[]
   feedbacks     Feedback[]
-  
-  // Profile extensions
-  title         String?
-  organization  String?
   
   // Extensions
   emails        Email[]
@@ -296,17 +342,252 @@ model EmailConnection {
 }
 
 model Contact {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String
-  name            String
-  email           String    @unique
-  company         String?
-  phone           String?
-  notes           String?
-  lastInteraction DateTime  @default(now())
+  id                  String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String
+  name                String
+  email               String       @unique
+  company             String?
+  phone               String?
+  notes               String?
+  lastInteraction     DateTime     @default(now())
+  
+  // New V7 fields
+  jobTitle            String?
+  department          String?
+  organizationId      String?      @db.ObjectId
+  organization        Organization? @relation(fields: [organizationId], references: [id])
+  avatar              String?
+  website             String?
+  linkedin            String?
+  preferredTone       String?
+  relationshipType    String?
+  aiSummary           String?
+
+  // Relations
+  groupMemberships    ContactGroupMember[]
+  campaignRecipients  CampaignRecipient[]
+  tags                ContactTag[]
+  activities          ContactActivity[]
 
   @@index([userId])
   @@map("contact")
+}
+
+model Organization {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  website     String?
+  industry    String?
+  description String?
+  logo        String?
+  userId      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  contacts    Contact[]
+
+  @@index([userId])
+  @@map("organization")
+}
+
+model ContactActivity {
+  id          String              @id @default(auto()) @map("_id") @db.ObjectId
+  contactId   String              @db.ObjectId
+  contact     Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type        ContactActivityType
+  title       String
+  description String?
+  timestamp   DateTime            @default(now())
+  metadata    String?             // JSON string for deep linking e.g. {"campaignId":"...", "emailId":"..."}
+
+  @@index([contactId])
+  @@map("contact_activity")
+}
+
+model Tag {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String
+  name        String
+  color       String?
+  createdAt   DateTime     @default(now())
+  
+  contactTags ContactTag[]
+
+  @@index([userId])
+  @@map("tag")
+}
+
+model ContactTag {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  contactId String   @db.ObjectId
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tagId     String   @db.ObjectId
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([contactId, tagId])
+  @@map("contact_tag")
+}
+
+model ContactGroup {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members     ContactGroupMember[]
+
+  @@index([userId])
+  @@map("contact_group")
+}
+
+model ContactGroupMember {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  groupId   String       @db.ObjectId
+  group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contactId String       @db.ObjectId
+  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([groupId, contactId])
+  @@map("contact_group_member")
+}
+
+model Audience {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String
+  name        String
+  description String?
+  rules       String   // JSON string storing dynamic nested rules
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaigns   Campaign[]
+
+  @@index([userId])
+  @@map("audience")
+}
+
+model Template {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String
+  name            String
+  description     String?
+  basePrompt      String?
+  subjectTemplate String?
+  bodyTemplate    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  campaigns       Campaign[]
+
+  @@index([userId])
+  @@map("template")
+}
+
+model Campaign {
+  id                 String         @id @default(auto()) @map("_id") @db.ObjectId
+  title              String
+  description        String?
+  campaignType       CampaignType
+  audienceId         String?        @db.ObjectId
+  audience           Audience?      @relation(fields: [audienceId], references: [id])
+  templateId         String?        @db.ObjectId
+  template           Template?      @relation(fields: [templateId], references: [id])
+  parentCampaignId   String?        @db.ObjectId
+  parentCampaign     Campaign?      @relation("CampaignFollowUps", fields: [parentCampaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  followUps          Campaign[]     @relation("CampaignFollowUps")
+  followUpType       FollowUpType?
+  userId             String
+  status             CampaignStatus @default(DRAFT)
+  scheduledAt        DateTime?
+  eventDate          DateTime?
+  eventDuration      Int?
+  
+  
+  // Analytics Fields
+  totalRecipients    Int            @default(0)
+  pendingRecipients  Int            @default(0)
+  approvedRecipients Int            @default(0)
+  emailsGenerated    Int            @default(0)
+  emailsSent         Int            @default(0)
+  failedRecipients   Int            @default(0)
+  opened             Int            @default(0)
+  clicked            Int            @default(0)
+  replied            Int            @default(0)
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  recipients         CampaignRecipient[]
+  attachments        CampaignAttachment[]
+  jobs               CampaignQueue[]
+
+  @@index([userId])
+  @@map("campaign")
+}
+
+model CampaignAttachment {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId       String   @db.ObjectId
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  storageKey       String
+  originalFilename String
+  mimeType         String?
+  size             Int?
+  fileData         String?  // Base64 encoded file content
+  uploadedBy       String?
+  uploadedAt       DateTime @default(now())
+
+  @@index([campaignId])
+  @@map("campaign_attachment")
+}
+
+model CampaignRecipient {
+  id                     String                  @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId             String                  @db.ObjectId
+  campaign               Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId              String                  @db.ObjectId
+  contact                Contact                 @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  personalizedSubject    String?
+  personalizedBody       String?
+  personalizationContext String?                 // JSON context used for AI generation
+  approvalStatus         CampaignRecipientStatus @default(PENDING)
+  sendStatus             CampaignRecipientStatus @default(PENDING)
+  failedReason           String?
+
+  // Timestamps
+  generatedAt            DateTime?
+  approvedAt             DateTime?
+  sentAt                 DateTime?
+  openedAt               DateTime?
+  clickedAt              DateTime?
+  repliedAt              DateTime?
+
+  @@index([campaignId])
+  @@index([contactId])
+  @@map("campaign_recipient")
+}
+
+model CampaignQueue {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId  String   @db.ObjectId
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  status      String   @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  attempts    Int      @default(0)
+  nextRunAt   DateTime @default(now())
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([status, nextRunAt])
+  @@map("campaign_queue")
 }
 
 model AutomationRule {

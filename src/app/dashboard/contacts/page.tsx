@@ -631,9 +631,19 @@ export default function ContactsPage() {
                 </div>
               </div>
 
-              {groups.length > 0 && (
-                <div className="flex flex-col gap-2 mt-2">
+              <div className="flex flex-col gap-2 mt-2">
+                <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-zinc-300">Assign to Groups</label>
+                  <button 
+                    type="button" 
+                    onClick={openCreateGroupModal}
+                    className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> New Group
+                  </button>
+                </div>
+                
+                {groups.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {groups.map(group => (
                       <button
@@ -656,8 +666,12 @@ export default function ContactsPage() {
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-4 flex items-center justify-center text-center text-xs text-zinc-500">
+                    You haven't created any groups yet.
+                  </div>
+                )}
+              </div>
 
               <div className="pt-4 flex items-center justify-end gap-3 mt-2 border-t border-white/10">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white px-5 py-2.5 rounded-full text-sm font-medium transition hover:bg-white/5">

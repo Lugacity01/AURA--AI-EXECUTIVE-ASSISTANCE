@@ -27,7 +27,10 @@ export async function POST(request: Request) {
       
       const contact = await prisma.contact.upsert({
         where: {
-          email: email
+          userId_email: {
+            userId: session.user.id,
+            email: email
+          }
         },
         update: {
           name: contactData.name.trim(),

@@ -64,7 +64,7 @@ export class ContactService {
     const { groupIds, ...contactData } = data;
     // Basic deduplication
     const existing = await prisma.contact.findFirst({
-      where: { email: data.email } // check globally to prevent the MongoDB @unique crash for now
+      where: { email: data.email, userId }
     });
 
     if (existing) {

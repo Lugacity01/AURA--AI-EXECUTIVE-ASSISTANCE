@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Upload, Trash2, Pencil } from "lucide-react";
+import { Plus, X, Upload, Trash2, Pencil, CheckCircle2 } from "lucide-react";
 import * as xlsx from "xlsx";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function ContactsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,6 +41,12 @@ export default function ContactsPage() {
   // Dialog State
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
   const [alertConfig, setAlertConfig] = useState<{ isOpen: boolean; title: string; message: string }>({ isOpen: false, title: "", message: "" });
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(""), 4000);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,6 +116,7 @@ export default function ContactsPage() {
 
       setIsModalOpen(false);
       fetchData();
+      showToast(editingContactId ? "Contact updated successfully!" : "Contact created successfully!");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -154,6 +162,7 @@ export default function ContactsPage() {
 
       setIsGroupModalOpen(false);
       fetchData();
+      showToast(editingGroupId ? "Group updated successfully!" : "Group created successfully!");
     } catch (err: any) {
       setGroupError(err.message);
     } finally {
@@ -348,6 +357,22 @@ export default function ContactsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      
+      {/* Toast popup */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-20 right-8 z-50 px-4 py-3 rounded-xl bg-indigo-950/90 border border-indigo-500/30 text-indigo-300 text-xs font-semibold shadow-xl flex items-center gap-2 backdrop-blur-md"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            {toastMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-medium text-white">All Contacts</h2>

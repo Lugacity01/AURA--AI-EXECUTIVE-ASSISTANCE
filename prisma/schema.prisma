@@ -345,7 +345,7 @@ model Contact {
   id                  String       @id @default(auto()) @map("_id") @db.ObjectId
   userId              String
   name                String
-  email               String       @unique
+  email               String
   company             String?
   phone               String?
   notes               String?
@@ -370,6 +370,7 @@ model Contact {
   activities          ContactActivity[]
 
   @@index([userId])
+  @@unique([userId, email])
   @@map("contact")
 }
 

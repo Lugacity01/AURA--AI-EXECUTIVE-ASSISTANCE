@@ -175,9 +175,9 @@ export default function DashboardLayout({
         transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
         className="hidden md:flex flex-col border-r border-white/[0.06] bg-black/35 backdrop-blur-xl relative z-20 shrink-0 h-screen select-none justify-between"
       >
-        <div>
+        <div className="flex-1 overflow-y-auto min-h-0 pb-4 no-scrollbar">
           {/* Logo Section */}
-          <div className="h-16 flex items-center justify-between px-6 border-b border-white/[0.04]">
+          <div className="h-16 flex items-center justify-between px-6 border-b border-white/[0.04] shrink-0 sticky top-0 bg-black/50 backdrop-blur-xl z-10">
             <Link href="/" className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
                 <Sparkles className="w-4.5 h-4.5 text-white" />

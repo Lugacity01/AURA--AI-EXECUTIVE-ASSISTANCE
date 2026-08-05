@@ -227,6 +227,27 @@ export default function InboxQueue() {
     }
   });
 
+  // 5.5 Query: Background Auto-Sync
+  useQuery({
+    queryKey: ["gmailAutoSync"],
+    queryFn: async () => {
+      if (!syncStatus.connected) return null;
+      const res = await fetch("/api/gmail/sync", { method: "POST" });
+      if (!res.ok) throw new Error("Auto-sync failed");
+      const data = await res.json();
+      
+      // If there were changes, update the UI data
+      if (data.created > 0 || data.updated > 0) {
+        queryClient.invalidateQueries({ queryKey: ["emails"] });
+        queryClient.invalidateQueries({ queryKey: ["inboxStats"] });
+        queryClient.invalidateQueries({ queryKey: ["gmailSyncStatus"] });
+      }
+      return data;
+    },
+    refetchInterval: 30000, // Sync with Gmail every 30 seconds
+    enabled: syncStatus.connected,
+  });
+
   // 6. Mutation: Bulk Actions
   const actionMutation = useMutation({
     mutationFn: async ({ action, ids }: { action: string; ids: string[] }) => {

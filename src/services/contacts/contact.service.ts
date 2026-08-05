@@ -14,7 +14,7 @@ export class ContactService {
     limit?: number;
   }) {
     const page = Math.max(1, options?.page || 1);
-    const limit = Math.min(100, Math.max(1, options?.limit || 20));
+    const limit = Math.max(1, options?.limit || 20);
     
     let whereClause: Prisma.ContactWhereInput = { userId };
 

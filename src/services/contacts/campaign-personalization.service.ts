@@ -41,6 +41,20 @@ export class CampaignPersonalizationService {
       senderName
     };
 
+    // 1.5 Pre-process the base prompt to substitute obvious template variables
+    // This guarantees variables are injected even if the AI is stubborn
+    let processedPrompt = personalizationContext.basePrompt || personalizationContext.campaignGoal;
+    if (processedPrompt) {
+      processedPrompt = processedPrompt
+        .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, personalizationContext.recipientName)
+        .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, personalizationContext.company)
+        .replace(/\[Job Title\]|\[Title\]/gi, personalizationContext.jobTitle)
+        .replace(/\[Department\]/gi, personalizationContext.department);
+      
+      // Update the context so the AI gets the processed version
+      personalizationContext.basePrompt = processedPrompt;
+    }
+
     // 2. Call the AI Pipeline via OpenAI
     const systemPrompt = `You are Aura, an elite Executive AI Assistant writing on behalf of the user. 
 Your goal is to write a highly personalized, professional email based on the Base Prompt and the Recipient's Profile Context.
@@ -60,7 +74,8 @@ Recipient Profile Context:
 - AI Summary: ${personalizationContext.aiSummary}
 - Desired Tone: ${personalizationContext.preferredTone}
 
-CRITICAL INSTRUCTION: If the Base Prompt includes a signature or sign-off at the end (e.g. "Best, [Name] [Title]"), use their EXACT signature. Do not change it. If there is no signature in the prompt, sign off exactly as: ${personalizationContext.senderName}
+CRITICAL INSTRUCTION 1: You MUST replace any placeholders like [Student's Name], [Name], or instructions like (Check individual from their company name as their track) with the actual corresponding data from the Recipient Profile Context. Do NOT output the raw brackets or instructions in the final email.
+CRITICAL INSTRUCTION 2: If the Base Prompt includes a signature or sign-off at the end (e.g. "Best, [Name] [Title]"), use their EXACT signature. Do not change it. If there is no signature in the prompt, sign off exactly as: ${personalizationContext.senderName}
 
 Generate the 'subject' and 'body'.`;
 
@@ -174,11 +189,17 @@ Generate the 'subject' and 'body'.`;
           // AI Master Template mode
           const rec = await prisma.campaignRecipient.findUnique({
             where: { id: recipient.id },
-            include: { contact: true }
+            include: { contact: { include: { organization: true } } }
           });
           
-          // Replace [Name] with the actual contact name
-          const finalBody = masterBody.replace(/\[Name\]/gi, rec?.contact.name || "there");
+          const company = rec?.contact.organization?.name || rec?.contact.company || "";
+          
+          // Replace placeholders with actual contact data
+          let finalBody = masterBody
+            .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, rec?.contact.name || "there")
+            .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, company)
+            .replace(/\[Job Title\]|\[Title\]/gi, rec?.contact.jobTitle || "")
+            .replace(/\[Department\]/gi, rec?.contact.department || "");
           
           await prisma.campaignRecipient.update({
             where: { id: recipient.id },

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Megaphone, Calendar, Users, Activity, ExternalLink, Trash2 } from "lucide-react";
+import { Plus, Megaphone, Calendar, Users, Activity, ExternalLink, Trash2, CheckCircle2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
 export default function CampaignsPage() {
@@ -9,6 +10,12 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(""), 3000);
+  };
 
   useEffect(() => {
     fetchCampaigns();
@@ -46,6 +53,9 @@ export default function CampaignsPage() {
       const res = await fetch(`/api/campaigns/${campaignToDelete}`, { method: "DELETE" });
       if (res.ok) {
         setCampaigns((prev) => prev.filter((c) => c.id !== campaignToDelete));
+        showToast("Campaign deleted successfully");
+      } else {
+        showToast("Failed to delete campaign");
       }
     } catch (err) {
       console.error(err);
@@ -57,6 +67,21 @@ export default function CampaignsPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#0F0F12]">
+      {/* Toast Notice */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-20 right-8 z-50 px-4 py-3 rounded-xl bg-indigo-950/90 border border-indigo-500/30 text-indigo-300 text-xs font-semibold shadow-xl flex items-center gap-2 backdrop-blur-md"
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="border-b border-white/10 px-8 py-6 flex items-center justify-between">
         <h1 className="text-2xl font-medium text-white flex items-center gap-3">
@@ -168,8 +193,10 @@ export default function CampaignsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${campaign.status === 'COMPLETED' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                        {campaign.status}
+                        <div className={`w-2 h-2 rounded-full ${campaign.status === 'COMPLETED' ? 'bg-emerald-500' : campaign.status === 'SENDING' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'}`} />
+                        {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ? 
+                          `SENDING (${Math.round(((campaign.emailsSent || 0) / campaign.totalRecipients) * 100)}%)` 
+                          : campaign.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 font-medium text-white">

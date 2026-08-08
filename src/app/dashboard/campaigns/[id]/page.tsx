@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
 export default function CampaignDetailsPage() {
@@ -26,6 +27,14 @@ export default function CampaignDetailsPage() {
   const [previewBody, setPreviewBody] = useState("");
 
   const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [isIntelligentMode, setIsIntelligentMode] = useState(true);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(""), 3000);
+  };
 
   useEffect(() => {
     fetchCampaignDetails();
@@ -94,8 +103,8 @@ export default function CampaignDetailsPage() {
           followUpType,
           recipientFilter,
           additionalInstructions: instructions,
-          masterSubject: hasPreview ? previewSubject : undefined,
-          masterBody: hasPreview ? previewBody : undefined
+          masterSubject: (!isIntelligentMode && hasPreview) ? previewSubject : undefined,
+          masterBody: (!isIntelligentMode && hasPreview) ? previewBody : undefined
         })
       });
 
@@ -118,6 +127,28 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  const handleSendNow = async () => {
+    setIsSending(true);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/schedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}) // empty body means immediate send
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to start campaign");
+      }
+      showToast("Campaign has been dispatched to the queue!");
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      showToast("Error starting campaign");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-full bg-[#0F0F12] items-center justify-center">
@@ -136,6 +167,21 @@ export default function CampaignDetailsPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#0F0F12]">
+      {/* Toast Notice */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-20 right-8 z-50 px-4 py-3 rounded-xl bg-indigo-950/90 border border-indigo-500/30 text-indigo-300 text-xs font-semibold shadow-xl flex items-center gap-2 backdrop-blur-md"
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="border-b border-white/10 px-8 py-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -148,9 +194,12 @@ export default function CampaignDetailsPage() {
               <span className={`text-xs px-2.5 py-1 rounded-md uppercase tracking-wider font-semibold ${
                 campaign.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
                 campaign.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400' :
+                campaign.status === 'SENDING' ? 'bg-blue-500/10 text-blue-400 animate-pulse' :
                 'bg-blue-500/10 text-blue-400'
               }`}>
-                {campaign.status}
+                {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ? 
+                  `SENDING (${Math.round(((campaign.emailsSent || 0) / campaign.totalRecipients) * 100)}%)` 
+                  : campaign.status}
               </span>
             </h1>
             <p className="text-sm text-zinc-400 mt-1">Created on {new Date(campaign.createdAt).toLocaleDateString()}</p>
@@ -171,6 +220,16 @@ export default function CampaignDetailsPage() {
             className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
           >
             <Plus className="w-4 h-4" /> Create Follow-up
+          </button>
+        )}
+        {campaign.status === 'READY' && (
+          <button 
+            onClick={handleSendNow}
+            disabled={isSending}
+            className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+          >
+            {isSending ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
+            {isSending ? "Starting..." : "Send Campaign Now"}
           </button>
         )}
       </div>
@@ -385,11 +444,25 @@ export default function CampaignDetailsPage() {
                       value={previewBody}
                       onChange={(e) => setPreviewBody(e.target.value)}
                     />
-                    <p className="text-xs text-zinc-500 mt-2">
-                      You can edit this draft before sending. Note that [Name] will be replaced dynamically.
-                    </p>
+                      <p className="text-xs text-zinc-500 mt-2">
+                        You can edit this draft before sending. Note that [Name] will be replaced dynamically.
+                      </p>
+                    </div>
+
+                    <div className="mt-2 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setIsIntelligentMode(!isIntelligentMode)}>
+                      <div className="pt-0.5">
+                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isIntelligentMode ? "bg-indigo-500 border-indigo-500" : "border-zinc-500"}`}>
+                          {isIntelligentMode && <CheckCircle2 className="w-3 h-3 text-white" />}
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-white">AI Intelligent Follow-up Mode</h4>
+                        <p className="text-xs text-indigo-300/70 mt-1">
+                          If enabled, the text above is just a sample. The AI will write a completely unique follow-up for EVERY individual person by reading the specific email that was originally sent to them.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-2">Additional AI Instructions</label>

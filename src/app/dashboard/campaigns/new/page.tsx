@@ -290,26 +290,7 @@ export default function NewCampaignWizard() {
   };
 
   const handleSaveRecipients = async () => {
-    // Flatten all selected organizations and groups into individual contacts
-    let finalContactIds = [...selectedContactIds];
-    
-    // Add all contacts from selected organizations
-    organizations.filter(o => selectedOrgIds.includes(o.id)).forEach(org => {
-      org.contacts?.forEach((c: any) => {
-        if (!finalContactIds.includes(c.id)) finalContactIds.push(c.id);
-      });
-    });
-
-    // Add all contacts from selected groups
-    groups.filter(g => selectedGroupIds.includes(g.id)).forEach(grp => {
-      grp.members?.forEach((m: any) => {
-        if (m.contactId && !finalContactIds.includes(m.contactId)) {
-          finalContactIds.push(m.contactId);
-        }
-      });
-    });
-
-    if (finalContactIds.length === 0) {
+    if (selectedContactIds.length === 0 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0) {
       setError("Please select at least one recipient, organization, or group.");
       return;
     }
@@ -320,7 +301,11 @@ export default function NewCampaignWizard() {
       const res = await fetch(`/api/campaigns/${campaignId}/recipients`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds: finalContactIds })
+        body: JSON.stringify({ 
+          contactIds: selectedContactIds,
+          groupIds: selectedGroupIds,
+          organizationIds: selectedOrgIds
+        })
       });
       if (!res.ok) throw new Error("Failed to save recipients");
       
@@ -575,7 +560,7 @@ export default function NewCampaignWizard() {
                         <button onClick={() => csvInputRef.current?.click()} className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
                           <Upload className="w-3 h-3" /> Import CSV
                         </button>
-                        <button onClick={() => setSelectedContactIds(contacts.map(c => c.id))} className="text-xs text-indigo-400 hover:text-indigo-300">Select All</button>
+                        <button onClick={() => setSelectedContactIds(contacts.map(c => c.id))} className="text-xs text-indigo-400 hover:text-indigo-300">Select All Contacts</button>
                       </div>
                     </div>
                     <div className="overflow-y-auto p-4 flex flex-col gap-6">
@@ -601,7 +586,24 @@ export default function NewCampaignWizard() {
                           
                           return (
                             <div key={groupName} className="flex flex-col gap-2">
-                              <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider pl-1 mb-1">{groupName}</h4>
+                              <div className="flex items-center justify-between pl-1 mb-1">
+                                <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{groupName}</h4>
+                                <button 
+                                  onClick={() => setSelectedContactIds(prev => {
+                                    const next = new Set(prev);
+                                    const allSelected = groupContacts.every(c => next.has(c.id));
+                                    if (allSelected) {
+                                      groupContacts.forEach(c => next.delete(c.id));
+                                    } else {
+                                      groupContacts.forEach(c => next.add(c.id));
+                                    }
+                                    return Array.from(next);
+                                  })}
+                                  className="text-[10px] text-indigo-400 hover:text-indigo-300 uppercase tracking-wider font-semibold"
+                                >
+                                  {groupContacts.every(c => selectedContactIds.includes(c.id)) ? "Deselect All" : "Select All"}
+                                </button>
+                              </div>
                               <div className="flex flex-col gap-1">
                                 {groupContacts.map(contact => (
                                   <label key={contact.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/10 transition bg-black/10">

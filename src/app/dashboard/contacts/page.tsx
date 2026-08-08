@@ -16,7 +16,7 @@ export default function ContactsPage() {
 
   // Form State
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
-  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+  const [selectedContacts, setSelectedContacts] = useState<Record<string, Set<string>>>({});
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
@@ -180,6 +180,7 @@ export default function ContactsPage() {
           const res = await fetch(`/api/groups/${id}`, { method: "DELETE" });
           if (!res.ok) throw new Error("Failed to delete group");
           fetchData();
+          showToast("Group deleted successfully");
         } catch (err: any) {
           setAlertConfig({ isOpen: true, title: "Error", message: err.message });
         }
@@ -197,6 +198,7 @@ export default function ContactsPage() {
           const res = await fetch(`/api/contacts/${id}`, { method: "DELETE" });
           if (!res.ok) throw new Error("Failed to delete contact");
           fetchData();
+          showToast("Contact deleted successfully");
         } catch (err: any) {
           setAlertConfig({ isOpen: true, title: "Error", message: err.message });
         }
@@ -213,8 +215,9 @@ export default function ContactsPage() {
         try {
           const res = await fetch(`/api/contacts/bulk-ungrouped`, { method: "DELETE" });
           if (!res.ok) throw new Error("Failed to delete ungrouped contacts");
-          setSelectedContactIds(new Set());
+          setSelectedContacts({});
           fetchData();
+          showToast("Ungrouped contacts deleted successfully");
         } catch (err: any) {
           setAlertConfig({ isOpen: true, title: "Error", message: err.message });
         }
@@ -223,21 +226,24 @@ export default function ContactsPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (selectedContactIds.size === 0) return;
+    const allSelectedContactIds = Array.from(new Set(Object.values(selectedContacts).flatMap(set => Array.from(set))));
+    if (allSelectedContactIds.length === 0) return;
+    
     setConfirmConfig({
       isOpen: true,
       title: "Delete Selected Contacts",
-      message: `Are you sure you want to permanently delete ${selectedContactIds.size} selected contacts?`,
+      message: `Are you sure you want to permanently delete ${allSelectedContactIds.length} selected contacts?`,
       onConfirm: async () => {
         try {
           const res = await fetch(`/api/contacts/bulk`, { 
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contactIds: Array.from(selectedContactIds) })
+            body: JSON.stringify({ contactIds: allSelectedContactIds })
           });
           if (!res.ok) throw new Error("Failed to bulk delete contacts");
-          setSelectedContactIds(new Set());
+          setSelectedContacts({});
           fetchData();
+          showToast("Contacts deleted successfully");
         } catch (err: any) {
           setAlertConfig({ isOpen: true, title: "Error", message: err.message });
         }
@@ -245,25 +251,72 @@ export default function ContactsPage() {
     });
   };
 
-  const handleToggleContact = (id: string) => {
-    const next = new Set(selectedContactIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelectedContactIds(next);
+  const handleToggleContact = (groupId: string, contactId: string) => {
+    setSelectedContacts(prev => {
+      const next = { ...prev };
+      const groupSet = new Set(next[groupId] || []);
+      
+      if (groupSet.has(contactId)) {
+        groupSet.delete(contactId);
+      } else {
+        groupSet.add(contactId);
+      }
+      
+      if (groupSet.size === 0) {
+        delete next[groupId];
+      } else {
+        next[groupId] = groupSet;
+      }
+      
+      return next;
+    });
   };
 
-  const handleToggleGroup = (groupContacts: any[]) => {
-    const allSelected = groupContacts.every(c => selectedContactIds.has(c.id));
-    const next = new Set(selectedContactIds);
-    if (allSelected) {
-      groupContacts.forEach(c => next.delete(c.id));
-    } else {
-      groupContacts.forEach(c => next.add(c.id));
-    }
-    setSelectedContactIds(next);
+  const handleToggleGroup = (groupId: string, groupContacts: any[]) => {
+    setSelectedContacts(prev => {
+      const next = { ...prev };
+      const groupSet = new Set(next[groupId] || []);
+      const allSelected = groupContacts.every(c => groupSet.has(c.id));
+      
+      if (allSelected) {
+        delete next[groupId];
+      } else {
+        next[groupId] = new Set(groupContacts.map(c => c.id));
+      }
+      
+      return next;
+    });
+  };
+
+  const handleRemoveFromGroup = async () => {
+    const groupIds = Object.keys(selectedContacts);
+    if (groupIds.length !== 1) return; // Only support one group at a time
+    
+    const groupId = groupIds[0];
+    if (groupId === "ungrouped") return;
+    
+    const contactIds = Array.from(selectedContacts[groupId]);
+    
+    setConfirmConfig({
+      isOpen: true,
+      title: "Remove from Group",
+      message: `Are you sure you want to remove ${contactIds.length} contacts from this group? They will NOT be deleted from the database.`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/groups/${groupId}/members`, { 
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contactIds })
+          });
+          if (!res.ok) throw new Error("Failed to remove contacts from group");
+          setSelectedContacts({});
+          fetchData();
+          showToast("Contacts removed from group");
+        } catch (err: any) {
+          setAlertConfig({ isOpen: true, title: "Error", message: err.message });
+        }
+      }
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -497,8 +550,8 @@ export default function ContactsPage() {
                             <th className="px-6 py-4 font-medium w-12">
                               <input 
                                 type="checkbox" 
-                                checked={groupContacts.length > 0 && groupContacts.every(c => selectedContactIds.has(c.id))}
-                                onChange={() => handleToggleGroup(groupContacts)}
+                                checked={groupContacts.length > 0 && groupContacts.every(c => selectedContacts[group?.id || "ungrouped"]?.has(c.id))}
+                                onChange={() => handleToggleGroup(group?.id || "ungrouped", groupContacts)}
                                 className="w-4 h-4 rounded border-white/10 bg-black/50 text-indigo-500 focus:ring-indigo-500/50 focus:ring-offset-0 transition cursor-pointer"
                               />
                             </th>
@@ -511,12 +564,12 @@ export default function ContactsPage() {
                         </thead>
                         <tbody className="divide-y divide-white/5">
                           {groupContacts.map((contact) => (
-                            <tr key={contact.id} className={`hover:bg-white/[0.02] transition ${selectedContactIds.has(contact.id) ? 'bg-indigo-500/5' : ''}`}>
+                            <tr key={contact.id} className={`hover:bg-white/[0.02] transition ${selectedContacts[group?.id || "ungrouped"]?.has(contact.id) ? 'bg-indigo-500/5' : ''}`}>
                               <td className="px-6 py-4">
                                 <input 
                                   type="checkbox" 
-                                  checked={selectedContactIds.has(contact.id)}
-                                  onChange={() => handleToggleContact(contact.id)}
+                                  checked={selectedContacts[group?.id || "ungrouped"]?.has(contact.id) || false}
+                                  onChange={() => handleToggleContact(group?.id || "ungrouped", contact.id)}
                                   className="w-4 h-4 rounded border-white/10 bg-black/50 text-indigo-500 focus:ring-indigo-500/50 focus:ring-offset-0 transition cursor-pointer"
                                 />
                               </td>
@@ -783,28 +836,57 @@ export default function ContactsPage() {
       )}
 
       {/* Floating Action Bar for Bulk Selection */}
-      {selectedContactIds.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-300">
-          <div className="bg-[#18181B] border border-white/10 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6">
-            <span className="text-sm font-medium text-white">
-              {selectedContactIds.size} selected
-            </span>
-            <div className="w-px h-6 bg-white/10" />
-            <button 
-              onClick={() => setSelectedContactIds(new Set())}
-              className="text-sm font-medium text-zinc-400 hover:text-white transition"
-            >
-              Deselect All
-            </button>
-            <button 
-              onClick={handleBulkDelete}
-              className="bg-red-500/10 text-red-400 px-4 py-2 rounded-full text-sm font-medium hover:bg-red-500/20 hover:text-red-300 transition flex items-center gap-2 border border-red-500/20"
-            >
-              <Trash2 className="w-4 h-4" /> Delete Selected
-            </button>
+      {(() => {
+        const allSelectedContactIds = Array.from(new Set(Object.values(selectedContacts).flatMap(set => Array.from(set))));
+        const selectedGroupIds = Object.keys(selectedContacts).filter(id => selectedContacts[id].size > 0);
+        
+        if (allSelectedContactIds.length === 0) return null;
+        
+        return (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-300">
+            <div className="bg-[#18181B] border border-white/10 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-white leading-tight">
+                  {allSelectedContactIds.length} selected
+                </span>
+                {selectedGroupIds.length === 1 && selectedGroupIds[0] !== "ungrouped" && (
+                  <span className="text-[10px] text-zinc-400 leading-tight">
+                    in 1 group
+                  </span>
+                )}
+                {selectedGroupIds.length > 1 && (
+                  <span className="text-[10px] text-zinc-400 leading-tight">
+                    across {selectedGroupIds.length} groups
+                  </span>
+                )}
+              </div>
+              <div className="w-px h-6 bg-white/10" />
+              <button 
+                onClick={() => setSelectedContacts({})}
+                className="text-sm font-medium text-zinc-400 hover:text-white transition"
+              >
+                Deselect All
+              </button>
+              
+              {selectedGroupIds.length === 1 && selectedGroupIds[0] !== "ungrouped" && (
+                <button 
+                  onClick={handleRemoveFromGroup}
+                  className="bg-zinc-800 text-zinc-300 px-4 py-2 rounded-full text-sm font-medium hover:bg-zinc-700 hover:text-white transition border border-white/5"
+                >
+                  Remove from Group
+                </button>
+              )}
+              
+              <button 
+                onClick={handleBulkDelete}
+                className="bg-red-500/10 text-red-400 px-4 py-2 rounded-full text-sm font-medium hover:bg-red-500/20 hover:text-red-300 transition flex items-center gap-2 border border-red-500/20"
+              >
+                <Trash2 className="w-4 h-4" /> Delete Selected
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Alert Modal */}
       {alertConfig.isOpen && (

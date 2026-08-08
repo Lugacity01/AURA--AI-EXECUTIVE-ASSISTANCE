@@ -58,6 +58,20 @@ export default function DashboardLayout({
   const [cmdSearch, setCmdSearch] = useState("");
   const [cmdSelectedIndex, setCmdSelectedIndex] = useState(0);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [gmailRevoked, setGmailRevoked] = useState(false);
+
+  React.useEffect(() => {
+    const checkGmailStatus = async () => {
+      try {
+        const res = await fetch("/api/gmail/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === "REVOKED") setGmailRevoked(true);
+        }
+      } catch (err) {}
+    };
+    if (session) checkGmailStatus();
+  }, [session]);
 
   React.useEffect(() => {
     if (!isPending && !session) {
@@ -155,7 +169,7 @@ export default function DashboardLayout({
     await signOut({
       fetchOptions: {
         onSuccess: () => {
-          router.push("/");
+          window.location.href = "/";
         }
       }
     });

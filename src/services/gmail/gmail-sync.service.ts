@@ -5,6 +5,7 @@ import { GmailHistory } from "./gmail-history";
 import { EmailMapper } from "./email-mapper";
 import { SyncSummary } from "./gmail-types";
 import { AIService } from "../ai.service";
+import { DraftService } from "../draft.service";
 
 export class GmailSyncService {
   /**
@@ -157,10 +158,24 @@ export class GmailSyncService {
               summary.skipped++;
             }
           } else {
-            await prisma.email.create({
+            const createdEmail = await prisma.email.create({
               data: prismaInput
             });
             summary.created++;
+
+            // Auto-generate AI draft for new incoming emails that aren't sent by us or drafts
+            if (!prismaInput.labelIds.includes("SENT") && !prismaInput.labelIds.includes("DRAFT")) {
+              try {
+                await DraftService.generateDraftForEmail(createdEmail.id, userId);
+                await prisma.email.update({
+                  where: { id: createdEmail.id },
+                  data: { status: "NEEDS_APPROVAL" }
+                });
+                console.log(`Auto-generated AI draft for new email: ${createdEmail.subject}`);
+              } catch (draftErr) {
+                console.error(`Failed to auto-generate draft for ${createdEmail.id}:`, draftErr);
+              }
+            }
 
             // Auto-sync sender to Contacts database (temporarily disabled per user request)
             /*

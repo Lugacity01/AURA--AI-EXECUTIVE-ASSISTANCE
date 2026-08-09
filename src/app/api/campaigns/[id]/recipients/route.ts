@@ -58,15 +58,27 @@ export async function POST(
       return NextResponse.json({ error: "Selected groups/organizations have no contacts" }, { status: 400 });
     }
 
-    // Create CampaignRecipient records
-    // Use createMany to insert them all efficiently, but avoid duplicates if they already exist
+    // Sync CampaignRecipient records: Add new ones, delete removed ones
     const existingRecipients = await prisma.campaignRecipient.findMany({
-      where: { campaignId, contactId: { in: uniqueContactIds } },
-      select: { contactId: true }
+      where: { campaignId },
+      select: { id: true, contactId: true }
     });
 
     const existingContactIds = existingRecipients.map(r => r.contactId);
+    
     const newContactIds = uniqueContactIds.filter(id => !existingContactIds.includes(id));
+    const removedRecipientIds = existingRecipients
+      .filter(r => !uniqueContactIds.includes(r.contactId))
+      .map(r => r.id);
+
+    if (removedRecipientIds.length > 0) {
+      // Only delete if the campaign is still a DRAFT to prevent accidental data loss on active campaigns
+      if (campaign.status === "DRAFT") {
+        await prisma.campaignRecipient.deleteMany({
+          where: { id: { in: removedRecipientIds } }
+        });
+      }
+    }
 
     if (newContactIds.length > 0) {
       await prisma.campaignRecipient.createMany({

@@ -64,6 +64,9 @@ export async function POST(request: Request) {
     } else if (action === "archive") {
       const result = await DraftService.archiveDraft(draftId);
       return NextResponse.json(result);
+    } else if (action === "restore") {
+      const result = await DraftService.restoreDraft(draftId);
+      return NextResponse.json(result);
     } else {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }

@@ -161,6 +161,29 @@ export class DraftService {
   }
 
   /**
+   * Restores an archived draft back to the Approvals Center.
+   */
+  static async restoreDraft(draftId: string) {
+    const draft = await prisma.emailDraft.findUnique({
+      where: { id: draftId }
+    });
+
+    if (!draft) {
+      throw new Error("Draft not found");
+    }
+
+    await prisma.email.update({
+      where: { id: draft.emailId },
+      data: { status: "NEEDS_APPROVAL" }
+    });
+
+    return prisma.emailDraft.update({
+      where: { id: draftId },
+      data: { status: "Draft" }
+    });
+  }
+
+  /**
    * Generates a tailored AI response draft for a specific email using the Google Gemma/Gemini model.
    */
   static async generateDraftForEmail(emailId: string, userId: string) {

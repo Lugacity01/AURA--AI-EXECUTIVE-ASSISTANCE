@@ -182,6 +182,33 @@ export default function DraftRevisionsHub() {
     }
   });
 
+  // Mutation: Restore to Approvals
+  const restoreMutation = useMutation({
+    mutationFn: async (draftId: string) => {
+      const res = await fetch("/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftId, action: "restore" })
+      });
+      if (!res.ok) throw new Error("Failed to restore to Approvals Center.");
+      return res.json();
+    },
+    onSuccess: () => {
+      setToastStyle("success");
+      setToastMessage("Restored to Approvals Center successfully!");
+      queryClient.invalidateQueries({ queryKey: ["drafts"] });
+      queryClient.invalidateQueries({ queryKey: ["approvals"] });
+      setSelectedId(null);
+    },
+    onError: (err: any) => {
+      setToastStyle("error");
+      setToastMessage(err.message || "Failed to restore draft.");
+    },
+    onSettled: () => {
+      setTimeout(() => setToastMessage(""), 4000);
+    }
+  });
+
   // Calendar Event Scheduling states
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [scheduleSummary, setScheduleSummary] = useState("");
@@ -294,7 +321,7 @@ export default function DraftRevisionsHub() {
   );
 
   return (
-    <div className="flex-1 h-full p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative select-none max-w-7xl mx-auto w-full overflow-hidden">
+    <div className="flex-1 lg:h-full overflow-y-auto lg:overflow-hidden p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative select-none max-w-7xl mx-auto w-full">
       
       {/* Toast Notice */}
       <AnimatePresence>
@@ -419,7 +446,7 @@ export default function DraftRevisionsHub() {
           </div>
 
           {/* Pane 2: Comparator & detail Workspace */}
-          <div className="flex-1 glass-panel border border-white/[0.06] bg-black/20 flex flex-col h-full overflow-hidden text-left">
+          <div className="flex-1 min-h-[500px] lg:min-h-0 glass-panel border border-white/[0.06] bg-black/20 flex flex-col h-full lg:overflow-hidden text-left">
             {selectedDraft ? (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
                 {/* Aligned Header */}
@@ -521,10 +548,27 @@ export default function DraftRevisionsHub() {
                 </div>
 
                 {/* Bottom Dispatch Actions footer */}
-                <div className="p-4 border-t border-white/[0.04] bg-black/40 flex justify-end gap-3 shrink-0 select-none">
+                <div className="p-4 border-t border-white/[0.04] bg-black/40 flex justify-end gap-3 shrink-0 select-none flex-wrap">
+                  {selectedDraft.status === "Archived" && (
+                    <button 
+                      onClick={() => restoreMutation.mutate(selectedDraft.id)}
+                      disabled={saveMutation.isPending || dispatchMutation.isPending || restoreMutation.isPending}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-all cursor-pointer flex items-center gap-1.5 mr-auto"
+                    >
+                      {restoreMutation.isPending ? (
+                        <>
+                          <RefreshCw className="w-3 h-3 animate-spin" /> Restoring...
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="w-3.5 h-3.5" /> Restore to Approvals
+                        </>
+                      )}
+                    </button>
+                  )}
                   <button 
                     onClick={handleSaveStaging}
-                    disabled={saveMutation.isPending || dispatchMutation.isPending}
+                    disabled={saveMutation.isPending || dispatchMutation.isPending || restoreMutation.isPending}
                     className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/[0.06] hover:bg-white/[0.04] text-slate-300 hover:text-white transition-all cursor-pointer flex items-center gap-2"
                   >
                     {saveMutation.isPending ? (
@@ -537,15 +581,15 @@ export default function DraftRevisionsHub() {
                   </button>
                   <button 
                     onClick={handleOpenSchedule}
-                    disabled={saveMutation.isPending || dispatchMutation.isPending}
+                    disabled={saveMutation.isPending || dispatchMutation.isPending || restoreMutation.isPending}
                     className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/[0.06] hover:bg-white/[0.04] text-slate-300 hover:text-indigo-400 transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Schedule Event
                   </button>
-                  {selectedDraft.status !== "Sent" && selectedDraft.status !== "Approved" ? (
+                  {selectedDraft.status !== "Sent" && selectedDraft.status !== "Approved" && selectedDraft.status !== "Archived" ? (
                     <button 
                       onClick={handleDispatch}
-                      disabled={saveMutation.isPending || dispatchMutation.isPending}
+                      disabled={saveMutation.isPending || dispatchMutation.isPending || restoreMutation.isPending}
                       className="px-5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
                     >
                       {dispatchMutation.isPending ? (
@@ -561,8 +605,12 @@ export default function DraftRevisionsHub() {
                   ) : (
                     <button 
                       onClick={handleDispatch}
-                      disabled={saveMutation.isPending || dispatchMutation.isPending}
-                      className="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 flex items-center gap-1.5 transition-all cursor-pointer"
+                      disabled={saveMutation.isPending || dispatchMutation.isPending || restoreMutation.isPending || selectedDraft.status === "Archived"}
+                      className={`px-5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        selectedDraft.status === "Archived" 
+                          ? "bg-white/[0.02] text-slate-500 border border-white/[0.04] cursor-not-allowed" 
+                          : "bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 cursor-pointer"
+                      }`}
                     >
                       {dispatchMutation.isPending ? (
                         <>

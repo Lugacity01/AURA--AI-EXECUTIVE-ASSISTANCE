@@ -76,6 +76,15 @@ export async function POST(
         }))
       });
     }
+    
+    const total = await prisma.campaignRecipient.count({ where: { campaignId } });
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        totalRecipients: total,
+        pendingRecipients: total
+      }
+    });
 
     return NextResponse.json({ success: true, added: newContactIds.length });
   } catch (error: any) {

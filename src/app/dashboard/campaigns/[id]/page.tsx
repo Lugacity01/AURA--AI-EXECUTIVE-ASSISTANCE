@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle } from "lucide-react";
+import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -31,6 +31,16 @@ export default function CampaignDetailsPage() {
   const [isSending, setIsSending] = useState(false);
   const [isIntelligentMode, setIsIntelligentMode] = useState(true);
 
+  // Add Recipients Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [useAiForNew, setUseAiForNew] = useState(true);
+  const [isAddingRecipients, setIsAddingRecipients] = useState(false);
+
+  // Recipient Preview Modal State
+  const [previewRecipient, setPreviewRecipient] = useState<any>(null);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(""), 3000);
@@ -55,6 +65,12 @@ export default function CampaignDetailsPage() {
       if (fupRes.ok) {
         const followUpsData = await fupRes.json();
         setFollowUps(followUpsData);
+      }
+      
+      const contactsRes = await fetch("/api/contacts?limit=100");
+      if (contactsRes.ok) {
+        const cData = await contactsRes.json();
+        setContacts(cData.contacts || []);
       }
     } catch (err) {
       console.error(err);
@@ -149,6 +165,35 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  const handleAddRecipients = async () => {
+    if (selectedContactIds.length === 0) return;
+    setIsAddingRecipients(true);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/recipients/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactIds: selectedContactIds,
+          useAi: useAiForNew
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add recipients");
+      }
+      const data = await res.json();
+      showToast(data.message);
+      setIsAddModalOpen(false);
+      setSelectedContactIds([]);
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      showToast("Error adding recipients");
+    } finally {
+      setIsAddingRecipients(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-full bg-[#0F0F12] items-center justify-center">
@@ -215,22 +260,38 @@ export default function CampaignDetailsPage() {
           </button>
         )}
         {campaign.status === 'COMPLETED' && (
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
-          >
-            <Plus className="w-4 h-4" /> Create Follow-up
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4 text-emerald-400" /> Add Recipients
+            </button>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+            >
+              <Plus className="w-4 h-4" /> Create Follow-up
+            </button>
+          </div>
         )}
         {campaign.status === 'READY' && (
-          <button 
-            onClick={handleSendNow}
-            disabled={isSending}
-            className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-          >
-            {isSending ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
-            {isSending ? "Starting..." : "Send Campaign Now"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4 text-emerald-400" /> Add Recipients
+            </button>
+            <button 
+              onClick={handleSendNow}
+              disabled={isSending}
+              className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+            >
+              {isSending ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
+              {isSending ? "Starting..." : "Send Campaign Now"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -356,7 +417,10 @@ export default function CampaignDetailsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full">
+                        <button 
+                          onClick={() => setPreviewRecipient(recipient)}
+                          className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full"
+                        >
                           Preview <ExternalLink className="w-3 h-3" />
                         </button>
                       </td>
@@ -520,6 +584,141 @@ export default function CampaignDetailsPage() {
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Add Recipients Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-lg font-medium text-white flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-emerald-400" />
+                Add More Recipients
+              </h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/10 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-6 overflow-y-auto">
+              <p className="text-sm text-zinc-400">
+                Adding new recipients to this campaign will generate emails for them and place the campaign back into the READY state. The email will <b>only</b> be sent to these new recipients.
+              </p>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-zinc-300">Select Contacts</label>
+                  <span className="text-xs text-zinc-500">{selectedContactIds.length} selected</span>
+                </div>
+                <div className="border border-white/10 rounded-xl overflow-hidden max-h-60 overflow-y-auto bg-black/20">
+                  {contacts.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-zinc-500">No contacts found in your database.</div>
+                  ) : (
+                    <div className="divide-y divide-white/5">
+                      {contacts.map(c => (
+                        <label key={c.id} className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer transition">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-zinc-700 bg-black/50 text-emerald-500 focus:ring-emerald-500/20"
+                            checked={selectedContactIds.includes(c.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedContactIds(prev => [...prev, c.id]);
+                              else setSelectedContactIds(prev => prev.filter(id => id !== c.id));
+                            }}
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-white">{c.name}</span>
+                            <span className="text-xs text-zinc-500">{c.email}</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setUseAiForNew(!useAiForNew)}>
+                <div className="pt-0.5">
+                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${useAiForNew ? "bg-indigo-500 border-indigo-500" : "border-zinc-500"}`}>
+                    {useAiForNew && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-white">AI Personalization (Recommended)</h4>
+                  <p className="text-xs text-indigo-300/70 mt-1">
+                    If checked, the AI will generate fresh, hyper-personalized emails for these new recipients based on your original campaign prompt. If unchecked, it will generate a standardized generic draft.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition"
+                disabled={isAddingRecipients}
+              >
+                Cancel
+              </button>
+              
+              <button 
+                onClick={handleAddRecipients}
+                disabled={isAddingRecipients || selectedContactIds.length === 0}
+                className="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
+              >
+                {isAddingRecipients ? (
+                  <>
+                    <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    Add & Generate Emails
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipient Preview Modal */}
+      {previewRecipient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-lg font-medium text-white">Email to {previewRecipient.contact?.name || "Recipient"}</h2>
+              <button onClick={() => setPreviewRecipient(null)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/10 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[70vh]">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Subject</label>
+                <div className="bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white">
+                  {previewRecipient.personalizedSubject || "No subject generated yet."}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Body</label>
+                <div className="bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white whitespace-pre-wrap min-h-[150px]">
+                  {previewRecipient.personalizedBody || "No body generated yet."}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end">
+              <button 
+                onClick={() => setPreviewRecipient(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition border border-white/10"
+              >
+                Close Preview
+              </button>
             </div>
           </div>
         </div>

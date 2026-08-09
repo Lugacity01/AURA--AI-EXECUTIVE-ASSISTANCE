@@ -644,13 +644,24 @@ export default function ApprovalsHub() {
 
                       {/* Card actions triggers */}
                       <div className="flex flex-col gap-2 mt-6">
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 gap-2 mb-1">
                           <button
                             onClick={() => handleStartEdit(item.id, item.draft)}
                             disabled={isEditing || approveMutation.isPending || rejectMutation.isPending}
                             className="py-2 rounded-xl text-xs font-semibold border border-white/[0.05] hover:bg-white/[0.04] text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                           >
                             <Edit3 className="w-3.5 h-3.5" /> Edit
+                          </button>
+                          <button
+                            onClick={() => generateMutation.mutate(item.id)}
+                            disabled={isEditing || generateMutation.isPending || approveMutation.isPending || rejectMutation.isPending}
+                            className="py-2 rounded-xl text-xs font-semibold border border-white/[0.05] hover:bg-white/[0.04] text-slate-300 hover:text-indigo-400 transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            {generateMutation.isPending && generateMutation.variables === item.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <><Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Regenerate</>
+                            )}
                           </button>
                           <button
                             onClick={() => handleOpenSchedule(item)}

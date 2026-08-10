@@ -25,7 +25,7 @@ export default function NewCampaignWizard() {
   const [campaignType, setCampaignType] = useState("NEWSLETTER");
   const [channel, setChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [basePrompt, setBasePrompt] = useState("");
-  const [generationMode, setGenerationMode] = useState<"ai" | "standard">("ai");
+  const [generationMode, setGenerationMode] = useState<"ai" | "standard">("standard");
   const [recipientSearch, setRecipientSearch] = useState("");
 
   // Event State (For MEETING Campaigns)
@@ -472,11 +472,19 @@ export default function NewCampaignWizard() {
   return (
     <div className="flex flex-col h-full bg-[#0F0F12]">
       {/* Header */}
-      <div className="border-b border-white/10 px-8 py-6 flex items-center gap-4">
-        <Link href="/dashboard/campaigns" className="text-zinc-400 hover:text-white transition">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <h1 className="text-2xl font-medium text-white">Campaign Builder</h1>
+      <div className="border-b border-white/10 px-4 md:px-8 py-4 md:py-6 flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-0">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard/campaigns" className="text-zinc-400 hover:text-white transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="text-xl md:text-2xl font-medium text-white">Campaign Builder</h1>
+        </div>
+        
+        {/* Mobile Step Indicator */}
+        <div className="md:hidden flex items-center gap-2 text-sm">
+          <span className="text-zinc-400">Step {step} of {steps.length}:</span>
+          <span className="text-indigo-400 font-medium">{steps[step - 1]}</span>
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -502,7 +510,7 @@ export default function NewCampaignWizard() {
         </div>
 
         {/* Main Step Content */}
-        <div className="flex-1 p-10 overflow-y-auto flex flex-col relative pb-32">
+        <div className="flex-1 p-4 md:p-10 overflow-y-auto flex flex-col relative pb-32">
 
           {error && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl">{error}</div>}
 
@@ -525,7 +533,7 @@ export default function NewCampaignWizard() {
 
               <div className="mb-6">
                 <label className="text-sm font-medium text-zinc-400 mb-2 block">Delivery Channel</label>
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                   <button
                     onClick={() => setChannel("EMAIL")}
                     className={`flex items-center gap-2 px-5 py-3 rounded-xl border transition-all ${channel === "EMAIL" ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-white/5 border-white/10 hover:bg-white/10 text-white"}`}
@@ -541,7 +549,7 @@ export default function NewCampaignWizard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
                   { id: "MEETING", title: "Meeting Invitation", desc: "Suggests times and generates calendar events", icon: "📅" },
                   { id: "NEWSLETTER", title: "Newsletter", desc: "Informational broadcast with rich formatting", icon: "📰" },
@@ -584,9 +592,9 @@ export default function NewCampaignWizard() {
                 {/* CONTACTS TAB */}
                 {recipientTab === "CONTACTS" && (
                   <>
-                    <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/20">
+                    <div className="p-4 border-b border-white/10 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 bg-black/20">
                       <span className="text-sm text-zinc-400">{selectedContactIds.length} selected</span>
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-wrap items-center gap-4">
                         <input
                           type="text"
                           value={recipientSearch}
@@ -952,66 +960,68 @@ export default function NewCampaignWizard() {
               </div>
 
               <div className="bg-black/40 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-xl">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-white/10 bg-white/5">
-                      <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Recipient</th>
-                      <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Subject Line</th>
-                      <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {campaignRecipients.map((recipient) => (
-                      <tr key={recipient.id} className="hover:bg-white/5 transition group">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-white">{recipient.contact?.name || "Unknown"}</span>
-                            <span className="text-xs text-zinc-500">{recipient.contact?.email}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col max-w-[300px]">
-                            <span className="text-sm text-zinc-300 truncate font-medium">{recipient.personalizedSubject || "No Subject"}</span>
-                            <span className="text-xs text-zinc-500 truncate">{recipient.personalizedBody || "No Body"}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {recipient.approvalStatus === "APPROVED" ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              Approved
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                              Needs Review
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => setEditingDraft(recipient)}
-                              className="text-indigo-400 hover:text-indigo-300 transition"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setDeletingDraftId(recipient.id)}
-                              className="text-red-400 hover:text-red-300 transition"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[800px] text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/5">
+                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Recipient</th>
+                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Subject Line</th>
+                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {campaignRecipients.length === 0 && (
-                  <div className="p-8 text-center text-zinc-500">
-                    No recipients found for this campaign.
-                  </div>
-                )}
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {campaignRecipients.map((recipient) => (
+                        <tr key={recipient.id} className="hover:bg-white/5 transition group">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-white">{recipient.contact?.name || "Unknown"}</span>
+                              <span className="text-xs text-zinc-500">{recipient.contact?.email}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col max-w-[250px] lg:max-w-[350px]">
+                              <span className="text-sm text-zinc-300 truncate font-medium">{recipient.personalizedSubject || "No Subject"}</span>
+                              <span className="text-xs text-zinc-500 truncate">{recipient.personalizedBody || "No Body"}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {recipient.approvalStatus === "APPROVED" ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                Approved
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                Needs Review
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex justify-end gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => setEditingDraft(recipient)}
+                                className="text-indigo-400 hover:text-indigo-300 transition"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeletingDraftId(recipient.id)}
+                                className="text-red-400 hover:text-red-300 transition"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {campaignRecipients.length === 0 && (
+                    <div className="p-8 text-center text-zinc-500">
+                      No recipients found for this campaign.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

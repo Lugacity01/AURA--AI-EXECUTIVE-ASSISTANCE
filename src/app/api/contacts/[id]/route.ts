@@ -16,7 +16,7 @@ export async function DELETE(
     const { id } = await params;
 
     // Contact relation deletes (like group memberships) are handled by Prisma CASCADE 
-    // assuming schema is set up. Let's manually clean up group memberships just in case.
+    // assuming schema is set up. Let's manually clean up group memberships just in case.after the approval status, why send status are so slow to be sent, where it was very fast before
     await prisma.contactGroupMember.deleteMany({
       where: { contactId: id }
     });

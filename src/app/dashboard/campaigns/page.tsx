@@ -66,7 +66,7 @@ export default function CampaignsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0F0F12]">
+    <div className="flex flex-col min-h-full bg-[#0F0F12] rounded-xl border border-white/[0.05]">
       {/* Toast Notice */}
       <AnimatePresence>
         {toastMessage && (
@@ -83,8 +83,8 @@ export default function CampaignsPage() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="border-b border-white/10 px-8 py-6 flex items-center justify-between">
-        <h1 className="text-2xl font-medium text-white flex items-center gap-3">
+      <div className="border-b border-white/10 px-4 md:px-8 py-4 md:py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+        <h1 className="text-xl md:text-2xl font-medium text-white flex items-center gap-3">
           <Megaphone className="w-6 h-6 text-indigo-500" />
           Campaigns
         </h1>
@@ -97,10 +97,10 @@ export default function CampaignsPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-8">
+      <div className="p-4 md:p-8">
         {/* Quick Analytics Row */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4">
+        <div className="flex overflow-x-auto sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 mb-8 pb-4 sm:pb-0 snap-x">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4 min-w-[240px] sm:min-w-0 snap-center shrink-0">
             <div className="w-12 h-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
               <Megaphone className="w-5 h-5 text-indigo-400" />
             </div>
@@ -111,7 +111,7 @@ export default function CampaignsPage() {
               </h3>
             </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4 min-w-[240px] sm:min-w-0 snap-center shrink-0">
             <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
               <Users className="w-5 h-5 text-emerald-400" />
             </div>
@@ -122,7 +122,7 @@ export default function CampaignsPage() {
               </h3>
             </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4 min-w-[240px] sm:min-w-0 snap-center shrink-0">
             <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
               <Activity className="w-5 h-5 text-blue-400" />
             </div>
@@ -131,7 +131,7 @@ export default function CampaignsPage() {
               <h3 className="text-2xl font-semibold text-white">0%</h3>
             </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center gap-4 min-w-[240px] sm:min-w-0 snap-center shrink-0">
             <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
               <Calendar className="w-5 h-5 text-purple-400" />
             </div>
@@ -169,8 +169,9 @@ export default function CampaignsPage() {
           </div>
         ) : (
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-sm text-zinc-400">
-              <thead className="bg-white/5 border-b border-white/10 text-xs uppercase text-zinc-500">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[800px] text-left text-sm text-zinc-400">
+                <thead className="bg-white/5 border-b border-white/10 text-xs uppercase text-zinc-500">
                 <tr>
                   <th className="px-6 py-4 font-medium">Campaign</th>
                   <th className="px-6 py-4 font-medium">Type</th>
@@ -195,7 +196,7 @@ export default function CampaignsPage() {
                       <span className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${campaign.status === 'COMPLETED' ? 'bg-emerald-500' : campaign.status === 'SENDING' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'}`} />
                         {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ? 
-                          `SENDING (${Math.round(((campaign.emailsSent || 0) / campaign.totalRecipients) * 100)}%)` 
+                          `SENDING (${Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100)}%)` 
                           : campaign.status}
                       </span>
                     </td>
@@ -220,7 +221,8 @@ export default function CampaignsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         )}
       </div>

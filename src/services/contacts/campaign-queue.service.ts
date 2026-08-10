@@ -18,9 +18,9 @@ export class CampaignQueueService {
 
     // Auto-approve any drafts that are still GENERATED (assuming user launched without manually approving)
     await prisma.campaignRecipient.updateMany({
-      where: { 
-        campaignId, 
-        approvalStatus: "GENERATED" 
+      where: {
+        campaignId,
+        approvalStatus: "GENERATED"
       },
       data: { approvalStatus: "APPROVED" }
     });
@@ -92,7 +92,7 @@ export class CampaignQueueService {
         if (recipients.length > 0) {
           // Get the user's valid Google access token
           const accessToken = await TokenManager.getValidAccessToken(job.campaign.userId);
-          
+
           // Fetch campaign attachments
           const dbAttachments = await prisma.campaignAttachment.findMany({
             where: { campaignId: job.campaignId }
@@ -116,7 +116,7 @@ export class CampaignQueueService {
                 }
 
                 await WhatsAppService.sendMessage(recipient.contact.phone, recipient.personalizedBody);
-                
+
                 await prisma.campaignRecipient.update({
                   where: { id: recipient.id },
                   data: {
@@ -135,9 +135,9 @@ export class CampaignQueueService {
                 if (job.campaign.campaignType === "MEETING") {
                   const eventStart = job.campaign.eventDate ? new Date(job.campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
                   const durationMinutes = job.campaign.eventDuration || 30;
-                  
+
                   const eventEnd = new Date(eventStart.getTime() + durationMinutes * 60000);
-                  
+
                   try {
                     const calendarData = await CalendarService.createMeetingEvent(job.campaign.userId, {
                       summary: `Meeting: ${job.campaign.title}`,
@@ -148,7 +148,7 @@ export class CampaignQueueService {
                     });
                     if (calendarData.meetLink) {
                       htmlBody += `<br><br><b>📅 Google Meet Link:</b> <a href="${calendarData.meetLink}">${calendarData.meetLink}</a>`;
-                      
+
                       const timeString = eventStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                       const dateString = eventStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                       htmlBody += `<br><i>A calendar invite has also been sent to your email for ${dateString} at ${timeString}.</i>`;
@@ -166,7 +166,7 @@ export class CampaignQueueService {
                   htmlBody,
                   attachments
                 );
-                
+
                 await prisma.campaignRecipient.update({
                   where: { id: recipient.id },
                   data: {
@@ -174,7 +174,12 @@ export class CampaignQueueService {
                     sentAt: new Date()
                   }
                 });
-                
+
+                await prisma.campaign.update({
+                  where: { id: job.campaignId },
+                  data: { emailsSent: { increment: 1 } }
+                });
+
                 successfulSends++;
               }
             } catch (err: any) {
@@ -186,6 +191,12 @@ export class CampaignQueueService {
                   failedReason: err.message
                 }
               });
+
+              await prisma.campaign.update({
+                where: { id: job.campaignId },
+                data: { failedRecipients: { increment: 1 } }
+              });
+
               failedSends++;
             }
           }
@@ -196,14 +207,12 @@ export class CampaignQueueService {
           where: { id: job.id },
           data: { status: "COMPLETED" }
         });
-        
+
         // Update campaign stats and status
         await prisma.campaign.update({
           where: { id: job.campaignId },
-          data: { 
-            status: CampaignStatus.COMPLETED,
-            emailsSent: { increment: successfulSends },
-            failedRecipients: { increment: failedSends }
+          data: {
+            status: CampaignStatus.COMPLETED
           }
         });
 
@@ -219,7 +228,7 @@ export class CampaignQueueService {
             nextRunAt: new Date(Date.now() + 1000 * 60 * 5) // retry in 5 mins
           }
         });
-        
+
         if (job.attempts >= 3) {
           await prisma.campaign.update({
             where: { id: job.campaignId },

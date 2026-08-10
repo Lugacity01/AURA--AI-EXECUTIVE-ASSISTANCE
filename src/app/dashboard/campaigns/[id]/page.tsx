@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,25 +41,52 @@ export default function CampaignDetailsPage() {
   // Recipient Preview Modal State
   const [previewRecipient, setPreviewRecipient] = useState<any>(null);
 
+  // Stuck state tracking
+  const lastProgressRef = useRef<number>(-1);
+  const stuckCountRef = useRef<number>(0);
+  const hasShownStuckToastRef = useRef<boolean>(false);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  useEffect(() => {
-    fetchCampaignDetails();
-  }, [id]);
-
-  const fetchCampaignDetails = async () => {
+  const fetchCampaignDetails = useCallback(async () => {
     try {
+      const timestamp = Date.now();
       const [campRes, fupRes] = await Promise.all([
-        fetch(`/api/campaigns/${id}`),
-        fetch(`/api/campaigns/${id}/follow-ups`)
+        fetch(`/api/campaigns/${id}?t=${timestamp}`, { cache: 'no-store' }),
+        fetch(`/api/campaigns/${id}/follow-ups?t=${timestamp}`, { cache: 'no-store' })
       ]);
       
       if (!campRes.ok) throw new Error("Failed to fetch campaign");
       
       const data = await campRes.json();
+      
+      // Check for stalled progress
+      if (data.status === 'SENDING' && data.totalRecipients > 0) {
+        const currentProgress = (data.emailsSent || 0) + (data.failedRecipients || 0);
+        
+        if (lastProgressRef.current !== -1 && currentProgress === lastProgressRef.current && currentProgress < data.totalRecipients) {
+          stuckCountRef.current += 1;
+          // If stuck for ~20 seconds (10 polls of 2s each)
+          if (stuckCountRef.current >= 10 && !hasShownStuckToastRef.current) {
+            showToast("The sending process seems stalled. Try clicking 'Force Resume' to restart it.");
+            hasShownStuckToastRef.current = true;
+          }
+        } else if (currentProgress !== lastProgressRef.current) {
+          // Progress moved! Reset counters
+          stuckCountRef.current = 0;
+          hasShownStuckToastRef.current = false;
+          lastProgressRef.current = currentProgress;
+        }
+      } else {
+        // Not sending, reset tracking
+        lastProgressRef.current = -1;
+        stuckCountRef.current = 0;
+        hasShownStuckToastRef.current = false;
+      }
+      
       setCampaign(data);
 
       if (fupRes.ok) {
@@ -67,7 +94,7 @@ export default function CampaignDetailsPage() {
         setFollowUps(followUpsData);
       }
       
-      const contactsRes = await fetch("/api/contacts?limit=100");
+      const contactsRes = await fetch("/api/contacts?limit=100", { cache: 'no-store' });
       if (contactsRes.ok) {
         const cData = await contactsRes.json();
         setContacts(cData.contacts || []);
@@ -77,7 +104,23 @@ export default function CampaignDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchCampaignDetails();
+  }, [fetchCampaignDetails]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (campaign?.status === 'SENDING' || campaign?.status === 'GENERATING') {
+      interval = setInterval(() => {
+        fetchCampaignDetails();
+      }, 2000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [campaign?.status, fetchCampaignDetails]);
 
   const handleGeneratePreview = async () => {
     setIsGenerating(true);
@@ -185,6 +228,25 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  const handleForceResume = async () => {
+    setIsSending(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/campaigns/${id}/resume`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to resume campaign");
+      }
+      showToast("Background process restarted!");
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      showToast("Error resuming campaign");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const handleAddRecipients = async () => {
     if (selectedContactIds.length === 0) return;
     setIsAddingRecipients(true);
@@ -248,13 +310,13 @@ export default function CampaignDetailsPage() {
       </AnimatePresence>
 
       {/* Header */}
-      <div className="border-b border-white/10 px-8 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard/campaigns" className="text-zinc-400 hover:text-white transition">
+      <div className="border-b border-white/10 px-4 md:px-8 py-4 md:py-6 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0">
+        <div className="flex items-start md:items-center gap-4">
+          <Link href="/dashboard/campaigns" className="text-zinc-400 hover:text-white transition mt-1 md:mt-0">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-medium text-white flex items-center gap-3">
+            <h1 className="text-xl md:text-2xl font-medium text-white flex flex-wrap items-center gap-2 md:gap-3">
               {campaign.title}
               <span className={`text-xs px-2.5 py-1 rounded-md uppercase tracking-wider font-semibold ${
                 campaign.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
@@ -263,7 +325,7 @@ export default function CampaignDetailsPage() {
                 'bg-blue-500/10 text-blue-400'
               }`}>
                 {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ? 
-                  `SENDING (${Math.round(((campaign.emailsSent || 0) / campaign.totalRecipients) * 100)}%)` 
+                  `SENDING (${Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100)}%)` 
                   : campaign.status}
               </span>
             </h1>
@@ -274,13 +336,13 @@ export default function CampaignDetailsPage() {
         {campaign.status === 'DRAFT' && (
           <button 
             onClick={() => router.push(`/dashboard/campaigns/new?id=${campaign.id}`)}
-            className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2"
+            className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center justify-center gap-2 w-full md:w-auto"
           >
             <Play className="w-4 h-4" /> Continue Editing
           </button>
         )}
         {campaign.status === 'COMPLETED' && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             {campaign.recipients?.some((r: any) => r.sendStatus === 'FAILED') && (
               <button 
                 onClick={handleRetryFailed}
@@ -305,8 +367,20 @@ export default function CampaignDetailsPage() {
             </button>
           </div>
         )}
+        {campaign.status === 'SENDING' && (
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <button 
+              onClick={handleForceResume}
+              disabled={isSending}
+              className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-5 py-2 rounded-full text-sm font-medium hover:bg-amber-500/20 transition flex items-center gap-2 shadow-lg shadow-amber-500/10 disabled:opacity-50"
+            >
+              {isSending ? <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
+              Force Resume
+            </button>
+          </div>
+        )}
         {campaign.status === 'READY' && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <button 
               onClick={() => setIsAddModalOpen(true)}
               className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -325,7 +399,7 @@ export default function CampaignDetailsPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-8 flex flex-col gap-8">
+      <div className="p-4 md:p-8 flex flex-col gap-8">
         
         {/* Campaign Timeline */}
         {followUps.length > 0 && (
@@ -383,20 +457,20 @@ export default function CampaignDetailsPage() {
         )}
 
         {/* Analytics row */}
-        <div className="grid grid-cols-4 gap-6">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+        <div className="flex overflow-x-auto sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 pb-4 sm:pb-0 snap-x">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 min-w-[200px] sm:min-w-0 snap-center shrink-0">
             <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Total Recipients</p>
             <h3 className="text-3xl font-semibold text-white">{campaign.totalRecipients || 0}</h3>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 min-w-[200px] sm:min-w-0 snap-center shrink-0">
             <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><Activity className="w-4 h-4" /> Emails Sent</p>
             <h3 className="text-3xl font-semibold text-white">{campaign.emailsSent || 0}</h3>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 min-w-[200px] sm:min-w-0 snap-center shrink-0">
             <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><Clock className="w-4 h-4" /> Opened</p>
             <h3 className="text-3xl font-semibold text-white">{campaign.opened || 0}</h3>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 min-w-[200px] sm:min-w-0 snap-center shrink-0">
             <p className="text-zinc-400 text-sm mb-2 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Replied</p>
             <h3 className="text-3xl font-semibold text-white">{campaign.replied || 0}</h3>
           </div>
@@ -406,61 +480,107 @@ export default function CampaignDetailsPage() {
         <div>
           <h2 className="text-lg font-medium text-white mb-4">Recipient List</h2>
           <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-sm text-zinc-400">
-              <thead className="bg-white/5 border-b border-white/10 text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Contact Name</th>
-                  <th className="px-6 py-4 font-medium">Email</th>
-                  <th className="px-6 py-4 font-medium">Phone</th>
-                  <th className="px-6 py-4 font-medium">Approval Status</th>
-                  <th className="px-6 py-4 font-medium">Send Status</th>
-                  <th className="px-6 py-4 font-medium text-right">View Draft</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {(!campaign.recipients || campaign.recipients.length === 0) ? (
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[800px] text-left text-sm text-zinc-400">
+                <thead className="bg-white/5 border-b border-white/10 text-xs uppercase text-zinc-500">
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-zinc-500">
-                      No recipients added to this campaign yet.
-                    </td>
+                    <th className="px-6 py-4 font-medium">Contact Name</th>
+                    <th className="px-6 py-4 font-medium">Email</th>
+                    <th className="px-6 py-4 font-medium">Phone</th>
+                    <th className="px-6 py-4 font-medium">Approval Status</th>
+                    <th className="px-6 py-4 font-medium">Send Status</th>
+                    <th className="px-6 py-4 font-medium text-right">View Draft</th>
                   </tr>
-                ) : (
-                  campaign.recipients.map((recipient: any) => (
-                    <tr key={recipient.id} className="hover:bg-white/[0.02] transition">
-                      <td className="px-6 py-4 text-white font-medium">{recipient.contact?.name || "Unknown"}</td>
-                      <td className="px-6 py-4">{recipient.contact?.email || "-"}</td>
-                      <td className="px-6 py-4">{recipient.contact?.phone || "-"}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-md text-xs ${
-                          recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :
-                          recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
-                          'bg-white/10 text-zinc-300'
-                        }`}>
-                          {recipient.approvalStatus}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-md text-xs ${
-                          recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400' :
-                          recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
-                          'bg-white/10 text-zinc-300'
-                        }`}>
-                          {recipient.sendStatus}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => setPreviewRecipient(recipient)}
-                          className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full"
-                        >
-                          Preview <ExternalLink className="w-3 h-3" />
-                        </button>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {(!campaign.recipients || campaign.recipients.length === 0) ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-zinc-500">
+                        No recipients added to this campaign yet.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    campaign.recipients.map((recipient: any) => (
+                      <tr key={recipient.id} className="hover:bg-white/[0.02] transition">
+                        <td className="px-6 py-4 text-white font-medium">{recipient.contact?.name || "Unknown"}</td>
+                        <td className="px-6 py-4">{recipient.contact?.email || "-"}</td>
+                        <td className="px-6 py-4">{recipient.contact?.phone || "-"}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-md text-xs ${
+                            recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :
+                            recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-white/10 text-zinc-300'
+                          }`}>
+                            {recipient.approvalStatus}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-md text-xs ${
+                            recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400' :
+                            recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                            'bg-white/10 text-zinc-300'
+                          }`}>
+                            {recipient.sendStatus}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={() => setPreviewRecipient(recipient)}
+                            className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full"
+                          >
+                            Preview <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="block md:hidden divide-y divide-white/5">
+              {(!campaign.recipients || campaign.recipients.length === 0) ? (
+                <div className="p-8 text-center text-zinc-500 text-sm">
+                  No recipients added to this campaign yet.
+                </div>
+              ) : (
+                campaign.recipients.map((recipient: any) => (
+                  <div key={recipient.id} className="p-4 flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-col min-w-0">
+                        <p className="text-white font-medium truncate">{recipient.contact?.name || "Unknown"}</p>
+                        <p className="text-sm text-zinc-400 truncate">{recipient.contact?.email || recipient.contact?.phone}</p>
+                      </div>
+                      <button 
+                        onClick={() => setPreviewRecipient(recipient)}
+                        className="text-indigo-400 bg-indigo-500/10 p-2 rounded-lg hover:bg-indigo-500/20 transition shrink-0 flex items-center gap-2 text-xs font-medium uppercase tracking-wider"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                        recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                        recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                        'bg-white/10 text-zinc-300 border border-white/10'
+                      }`}>
+                        {recipient.approvalStatus}
+                      </span>
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                        recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                        recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                        'bg-white/10 text-zinc-400 border border-white/10'
+                      }`}>
+                        {recipient.sendStatus === 'SENT' ? 'Sent' : recipient.sendStatus === 'FAILED' ? 'Failed' : 'Queued'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
@@ -487,7 +607,7 @@ export default function CampaignDetailsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Follow-up Type</label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {['REMINDER', 'FOLLOW_UP', 'CUSTOM'].map(type => (
                     <button
                       key={type}
@@ -640,7 +760,7 @@ export default function CampaignDetailsPage() {
               </p>
 
               <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                   <label className="block text-sm font-medium text-zinc-300">Select Contacts</label>
                   <span className="text-xs text-zinc-500">{selectedContactIds.length} selected</span>
                 </div>

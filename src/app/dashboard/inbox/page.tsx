@@ -206,6 +206,9 @@ export default function InboxQueue() {
   const syncMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/gmail/sync", { method: "POST" });
+      if (res.status === 409) {
+        return { inProgress: true };
+      }
       if (!res.ok) throw new Error("Sync failed");
       return res.json();
     },
@@ -214,10 +217,14 @@ export default function InboxQueue() {
       setTimeout(() => setToastMessage(""), 5000);
     },
     onSuccess: (data) => {
-      setToastMessage(`Sync completed. Imported ${data.created} new, updated ${data.updated} emails.`);
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
-      queryClient.invalidateQueries({ queryKey: ["inboxStats"] });
-      queryClient.invalidateQueries({ queryKey: ["gmailSyncStatus"] });
+      if (data.inProgress) {
+        setToastMessage("Sync is already running in the background...");
+      } else {
+        setToastMessage(`Sync completed. Imported ${data.created} new, updated ${data.updated} emails.`);
+        queryClient.invalidateQueries({ queryKey: ["emails"] });
+        queryClient.invalidateQueries({ queryKey: ["inboxStats"] });
+        queryClient.invalidateQueries({ queryKey: ["gmailSyncStatus"] });
+      }
     },
     onError: (err: any) => {
       setToastMessage(`Sync failed: ${err.message || "Server error"}`);
@@ -233,6 +240,7 @@ export default function InboxQueue() {
     queryFn: async () => {
       if (!syncStatus.connected) return null;
       const res = await fetch("/api/gmail/sync", { method: "POST" });
+      if (res.status === 409) return { created: 0, updated: 0 }; // Ignore quietly if already syncing
       if (!res.ok) throw new Error("Auto-sync failed");
       const data = await res.json();
       

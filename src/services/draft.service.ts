@@ -186,7 +186,7 @@ export class DraftService {
   /**
    * Generates a tailored AI response draft for a specific email using the Google Gemma/Gemini model.
    */
-  static async generateDraftForEmail(emailId: string, userId: string) {
+  static async generateDraftForEmail(emailId: string, userId: string, customInstructions?: string) {
     const email = await prisma.email.findUnique({
       where: { id: emailId }
     });
@@ -202,7 +202,7 @@ export class DraftService {
       baseURL: "https://openrouter.ai/api/v1",
     });
 
-    const systemPrompt = `You are Aura, an executive AI assistant.
+    let systemPrompt = `You are Aura, an executive AI assistant.
 Draft a professional, helpful email response on behalf of Yinka.
 Below is the incoming email detail:
 From: ${senderName}
@@ -211,6 +211,10 @@ Content:
 ${bodyContent}
 
 Your draft should address the sender's points, suggest a positive next step, and maintain a highly professional, concise tone. Output ONLY the response body without subject lines, salutation templates (like [Your Name]), or extra text.`;
+
+    if (customInstructions) {
+      systemPrompt += `\n\nCRITICAL: The user has provided the following specific instructions or a rough draft to base the response on:\n"${customInstructions}"\nEnsure the final response strictly adheres to this direction and incorporates these edits professionally.`;
+    }
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_CHAT_MODEL || "google/gemma-4-26b-a4b-it:free",

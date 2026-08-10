@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       if (!emailId) {
         return NextResponse.json({ error: "Missing emailId parameter" }, { status: 400 });
       }
-      const result = await DraftService.generateDraftForEmail(emailId, userId);
+      const result = await DraftService.generateDraftForEmail(emailId, userId, body.customInstructions);
       return NextResponse.json(result);
     }
 

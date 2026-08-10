@@ -180,11 +180,11 @@ export default function ApprovalsHub() {
   });
   // 5. Mutation: Manual AI Draft Generation
   const generateMutation = useMutation({
-    mutationFn: async (emailId: string) => {
+    mutationFn: async ({ emailId, customInstructions }: { emailId: string; customInstructions?: string }) => {
       const res = await fetch("/api/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailId, action: "generate" })
+        body: JSON.stringify({ emailId, action: "generate", customInstructions })
       });
       if (!res.ok) throw new Error("Failed to generate AI response.");
       return res.json();
@@ -192,6 +192,7 @@ export default function ApprovalsHub() {
     onSuccess: () => {
       setToastStyle("success");
       setToastMessage("AI response draft generated successfully.");
+      setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
     },
     onError: (err: any) => {
@@ -548,7 +549,7 @@ export default function ApprovalsHub() {
                                 </button>
                                 <button 
                                   onClick={() => handleSaveEdit(item)}
-                                  disabled={saveMutation.isPending}
+                                  disabled={saveMutation.isPending || generateMutation.isPending}
                                   className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                                 >
                                   {saveMutation.isPending ? (
@@ -556,6 +557,17 @@ export default function ApprovalsHub() {
                                   ) : (
                                     <Save className="w-3.5 h-3.5" />
                                   )} Save Changes
+                                </button>
+                                <button
+                                  onClick={() => generateMutation.mutate({ emailId: item.id, customInstructions: editingText })}
+                                  disabled={generateMutation.isPending || saveMutation.isPending}
+                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors"
+                                >
+                                  {generateMutation.isPending && generateMutation.variables?.emailId === item.id ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                  )} AI Rewrite
                                 </button>
                               </div>
                             </div>
@@ -571,11 +583,11 @@ export default function ApprovalsHub() {
                                     No response draft has been generated for this email thread.
                                   </span>
                                   <button
-                                    onClick={() => generateMutation.mutate(item.id)}
-                                    disabled={generateMutation.isPending && generateMutation.variables === item.id}
+                                    onClick={() => generateMutation.mutate({ emailId: item.id })}
+                                    disabled={generateMutation.isPending && generateMutation.variables?.emailId === item.id}
                                     className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-300 flex items-center gap-2 cursor-pointer disabled:opacity-50 select-none hover:scale-[1.02] active:scale-[0.98] transition-all"
                                   >
-                                    {generateMutation.isPending && generateMutation.variables === item.id ? (
+                                    {generateMutation.isPending && generateMutation.variables?.emailId === item.id ? (
                                       <>
                                         <RefreshCw className="w-3 h-3 animate-spin" /> Generating Draft...
                                       </>
@@ -653,11 +665,11 @@ export default function ApprovalsHub() {
                             <Edit3 className="w-3.5 h-3.5" /> Edit
                           </button>
                           <button
-                            onClick={() => generateMutation.mutate(item.id)}
+                            onClick={() => generateMutation.mutate({ emailId: item.id })}
                             disabled={isEditing || generateMutation.isPending || approveMutation.isPending || rejectMutation.isPending}
                             className="py-2 rounded-xl text-xs font-semibold border border-white/[0.05] hover:bg-white/[0.04] text-slate-300 hover:text-indigo-400 transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                           >
-                            {generateMutation.isPending && generateMutation.variables === item.id ? (
+                            {generateMutation.isPending && generateMutation.variables?.emailId === item.id ? (
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                               <><Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Regenerate</>

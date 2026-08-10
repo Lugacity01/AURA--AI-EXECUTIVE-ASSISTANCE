@@ -56,10 +56,13 @@ export class CampaignPersonalizationService {
     }
 
     // 2. Call the AI Pipeline via OpenAI
+    const isWhatsApp = campaign.channel === "WHATSAPP";
+    
     const systemPrompt = `You are Aura, an elite Executive AI Assistant writing on behalf of the user. 
-Your goal is to write a highly personalized, professional email based on the Base Prompt and the Recipient's Profile Context.
-The email should sound human, warm, but incredibly sharp. Adopt the requested Tone.
-Output exactly as a JSON object with 'subject' and 'body' string properties. Do not wrap in markdown or backticks.`;
+Your goal is to write a highly personalized, professional message based on the Base Prompt and the Recipient's Profile Context.
+The message should sound human, warm, but incredibly sharp. Adopt the requested Tone.
+${isWhatsApp ? "This message is for WhatsApp. Keep it conversational, short, and use emojis appropriately. Do NOT output a subject line." : ""}
+Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. Do not wrap in markdown or backticks.`;
 
     const userPrompt = `
 Base Prompt:
@@ -74,12 +77,12 @@ Recipient Profile Context:
 - AI Summary: ${personalizationContext.aiSummary}
 - Desired Tone: ${personalizationContext.preferredTone}
 
-CRITICAL INSTRUCTION 1: You MUST replace any placeholders like [Student's Name], [Name], or instructions like (Check individual from their company name as their track) with the actual corresponding data from the Recipient Profile Context. Do NOT output the raw brackets or instructions in the final email.
+CRITICAL INSTRUCTION 1: You MUST replace any placeholders like [Student's Name], [Name], or instructions like (Check individual from their company name as their track) with the actual corresponding data from the Recipient Profile Context. Do NOT output the raw brackets or instructions in the final message.
 CRITICAL INSTRUCTION 2: If the Base Prompt includes a signature or sign-off at the end (e.g. "Best, [Name] [Title]"), use their EXACT signature. Do not change it. If there is no signature in the prompt, sign off exactly as: ${personalizationContext.senderName}
 
-Generate the 'subject' and 'body'.`;
+Generate the JSON.`;
 
-    let subject = `Update for ${personalizationContext.company}`;
+    let subject = isWhatsApp ? "" : `Update for ${personalizationContext.company}`;
     let body = `Hi ${personalizationContext.recipientName},\n\nWe wanted to reach out to you.\n\nBest,\nAura`;
 
     try {
@@ -127,9 +130,10 @@ Generate the 'subject' and 'body'.`;
     }
 
     // Marks campaign as GENERATING
-    await prisma.campaign.update({
+    const campaign = await prisma.campaign.update({
       where: { id: campaignId, userId },
-      data: { status: CampaignStatus.GENERATING }
+      data: { status: CampaignStatus.GENERATING },
+      include: { template: true }
     });
 
     // 1. Fetch pending recipients
@@ -143,15 +147,12 @@ Generate the 'subject' and 'body'.`;
     const senderName = user?.name || "User";
 
     // 1.7 If Standard Mode (!useAi), generate ONE polished master template
-    let masterSubject = "Campaign Update";
+    const isWhatsApp = campaign?.channel === "WHATSAPP";
+    let masterSubject = isWhatsApp ? "" : "Campaign Update";
     let masterBody = "No content provided.";
     if (!useAi) {
-      const campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-        include: { template: true }
-      });
       const basePrompt = campaign?.template?.basePrompt || "";
-      masterSubject = campaign?.title || masterSubject;
+      masterSubject = isWhatsApp ? "" : (campaign?.title || masterSubject);
       masterBody = basePrompt;
 
       try {
@@ -161,9 +162,10 @@ Generate the 'subject' and 'body'.`;
           messages: [
             { 
               role: "system", 
-              content: `You are Aura, an elite AI assistant. Write a polished, highly professional mass email based on the User's draft. 
-                        Output exactly as a JSON object with 'subject' and 'body' string properties. 
+              content: `You are Aura, an elite AI assistant. Write a polished, highly professional mass message based on the User's draft. 
+                        Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. 
                         Do not wrap in markdown or backticks. 
+                        ${isWhatsApp ? "This is a WhatsApp broadcast. Keep paragraphs short and conversational. Include emojis where natural. No subject line." : ""}
                         CRITICAL INSTRUCTIONS:
                         1. Use '[Name]' as the placeholder for the recipient's name (e.g. "Hi [Name],").
                         2. If the User's draft includes a signature or sign-off at the end, preserve it EXACTLY as written. If not, sign off as: ${senderName}` 
@@ -180,8 +182,8 @@ Generate the 'subject' and 'body'.`;
       }
     }
 
-    // 2. Process in sequence (or parallel batches)
-    for (const recipient of pendingRecipients) {
+    // 2. Process in parallel
+    await Promise.all(pendingRecipients.map(async (recipient) => {
       try {
         if (useAi) {
           await CampaignPersonalizationService.generateForRecipient(recipient.id, userId, senderName);
@@ -221,7 +223,7 @@ Generate the 'subject' and 'body'.`;
           }
         });
       }
-    }
+    }));
 
     // 3. Mark campaign as READY
     await prisma.campaign.update({

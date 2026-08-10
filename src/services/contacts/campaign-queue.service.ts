@@ -3,6 +3,7 @@ import { CampaignStatus } from "@prisma/client";
 import { TokenManager } from "../gmail/token-manager";
 import { GmailClient } from "../gmail/gmail-client";
 import { CalendarService } from "../calendar/calendar.service";
+import { WhatsAppService } from "../whatsapp/whatsapp.service";
 
 export class CampaignQueueService {
   /**
@@ -106,58 +107,78 @@ export class CampaignQueueService {
 
           for (const recipient of recipients) {
             try {
-              if (!recipient.personalizedSubject || !recipient.personalizedBody || !recipient.contact.email) {
-                throw new Error("Missing subject, body, or email address");
-              }
+              if (job.campaign.channel === "WHATSAPP") {
+                if (!recipient.personalizedBody) {
+                  throw new Error("Missing message body");
+                }
+                if (!recipient.contact.phone) {
+                  throw new Error("No phone number");
+                }
 
-              let htmlBody = recipient.personalizedBody.replace(/\n/g, "<br>");
-
-              if (job.campaign.campaignType === "MEETING") {
-                const eventStart = job.campaign.eventDate ? new Date(job.campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
-                const durationMinutes = job.campaign.eventDuration || 30;
+                await WhatsAppService.sendMessage(recipient.contact.phone, recipient.personalizedBody);
                 
-                const eventEnd = new Date(eventStart.getTime() + durationMinutes * 60000);
-                
-                try {
-                  const calendarData = await CalendarService.createMeetingEvent(job.campaign.userId, {
-                    summary: `Meeting: ${job.campaign.title}`,
-                    description: recipient.personalizedSubject || "Meeting",
-                    startTime: eventStart.toISOString(),
-                    endTime: eventEnd.toISOString(),
-                    attendeeEmails: [recipient.contact.email]
-                  });
-                  if (calendarData.meetLink) {
-                    htmlBody += `<br><br><b>📅 Google Meet Link:</b> <a href="${calendarData.meetLink}">${calendarData.meetLink}</a>`;
-                    
-                    const timeString = eventStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                    const dateString = eventStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    htmlBody += `<br><i>A calendar invite has also been sent to your email for ${dateString} at ${timeString}.</i>`;
+                await prisma.campaignRecipient.update({
+                  where: { id: recipient.id },
+                  data: {
+                    sendStatus: "SENT",
+                    sentAt: new Date()
                   }
-                } catch (e) {
-                  console.error("Failed to generate Google Meet link", e);
+                });
+                successfulSends++;
+              } else {
+                if (!recipient.personalizedSubject || !recipient.personalizedBody || !recipient.contact.email) {
+                  throw new Error("Missing subject, body, or email address");
                 }
-              }
 
-              // Attempt dispatch via Gmail API
-              await GmailClient.sendEmail(
-                accessToken,
-                recipient.contact.email,
-                recipient.personalizedSubject,
-                htmlBody,
-                attachments
-              );
-              
-              await prisma.campaignRecipient.update({
-                where: { id: recipient.id },
-                data: {
-                  sendStatus: "SENT",
-                  sentAt: new Date()
+                let htmlBody = recipient.personalizedBody.replace(/\n/g, "<br>");
+
+                if (job.campaign.campaignType === "MEETING") {
+                  const eventStart = job.campaign.eventDate ? new Date(job.campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+                  const durationMinutes = job.campaign.eventDuration || 30;
+                  
+                  const eventEnd = new Date(eventStart.getTime() + durationMinutes * 60000);
+                  
+                  try {
+                    const calendarData = await CalendarService.createMeetingEvent(job.campaign.userId, {
+                      summary: `Meeting: ${job.campaign.title}`,
+                      description: recipient.personalizedSubject || "Meeting",
+                      startTime: eventStart.toISOString(),
+                      endTime: eventEnd.toISOString(),
+                      attendeeEmails: [recipient.contact.email]
+                    });
+                    if (calendarData.meetLink) {
+                      htmlBody += `<br><br><b>📅 Google Meet Link:</b> <a href="${calendarData.meetLink}">${calendarData.meetLink}</a>`;
+                      
+                      const timeString = eventStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                      const dateString = eventStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      htmlBody += `<br><i>A calendar invite has also been sent to your email for ${dateString} at ${timeString}.</i>`;
+                    }
+                  } catch (e) {
+                    console.error("Failed to generate Google Meet link", e);
+                  }
                 }
-              });
-              
-              successfulSends++;
+
+                // Attempt dispatch via Gmail API
+                await GmailClient.sendEmail(
+                  accessToken,
+                  recipient.contact.email,
+                  recipient.personalizedSubject,
+                  htmlBody,
+                  attachments
+                );
+                
+                await prisma.campaignRecipient.update({
+                  where: { id: recipient.id },
+                  data: {
+                    sendStatus: "SENT",
+                    sentAt: new Date()
+                  }
+                });
+                
+                successfulSends++;
+              }
             } catch (err: any) {
-              console.error(`Failed to send email to ${recipient.contact.email}:`, err);
+              console.error(`Failed to send message to recipient ${recipient.id}:`, err);
               await prisma.campaignRecipient.update({
                 where: { id: recipient.id },
                 data: {

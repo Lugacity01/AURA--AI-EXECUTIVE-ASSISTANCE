@@ -21,6 +21,7 @@ export default function ContactsPage() {
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [phone, setPhone] = useState("");
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -78,7 +79,7 @@ export default function ContactsPage() {
 
   const openCreateContactModal = () => {
     setEditingContactId(null);
-    setName(""); setEmail(""); setCompany(""); setJobTitle(""); setSelectedGroups([]);
+    setName(""); setEmail(""); setCompany(""); setJobTitle(""); setPhone(""); setSelectedGroups([]);
     setError("");
     setIsModalOpen(true);
   };
@@ -89,6 +90,7 @@ export default function ContactsPage() {
     setEmail(contact.email);
     setCompany(contact.company || "");
     setJobTitle(contact.jobTitle || "");
+    setPhone(contact.phone || "");
     setSelectedGroups(contact.groupMemberships?.map((gm: any) => gm.groupId) || []);
     setError("");
     setIsModalOpen(true);
@@ -106,7 +108,7 @@ export default function ContactsPage() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, company, jobTitle, groupIds: selectedGroups }),
+        body: JSON.stringify({ name, email, company, jobTitle, phone, groupIds: selectedGroups }),
       });
 
       if (!res.ok) {
@@ -557,6 +559,7 @@ export default function ContactsPage() {
                             </th>
                             <th className="px-6 py-4 font-medium">Name</th>
                             <th className="px-6 py-4 font-medium">Email</th>
+                            <th className="px-6 py-4 font-medium">Phone</th>
                             <th className="px-6 py-4 font-medium">Company</th>
                             <th className="px-6 py-4 font-medium">Title</th>
                             <th className="px-6 py-4 font-medium text-right">Actions</th>
@@ -575,6 +578,7 @@ export default function ContactsPage() {
                               </td>
                               <td className="px-6 py-4 text-white font-medium">{contact.name}</td>
                               <td className="px-6 py-4">{contact.email}</td>
+                              <td className="px-6 py-4">{contact.phone || "-"}</td>
                               <td className="px-6 py-4">{contact.company || "-"}</td>
                               <td className="px-6 py-4">{contact.jobTitle || "-"}</td>
                               <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
@@ -706,6 +710,13 @@ export default function ContactsPage() {
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium text-zinc-300">Job Title</label>
                   <input type="text" value={jobTitle} onChange={e => setJobTitle(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition placeholder-white/20" placeholder="CEO" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-zinc-300">Phone Number (For WhatsApp)</label>
+                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition placeholder-white/20" placeholder="+1234567890" />
                 </div>
               </div>
 

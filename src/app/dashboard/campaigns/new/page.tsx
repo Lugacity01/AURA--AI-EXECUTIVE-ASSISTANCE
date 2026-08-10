@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Check, ChevronRight, Wand2, Loader2, ArrowLeft, X, Sparkles, Plus, Mail, Users, Filter, LayoutTemplate, Clock, Calendar as CalendarIcon, Upload, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Wand2, Loader2, ArrowLeft, X, Sparkles, Plus, Mail, Users, Filter, LayoutTemplate, Clock, Calendar as CalendarIcon, Upload, Trash2, MessageCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -13,7 +13,7 @@ export default function NewCampaignWizard() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  
+
   // Refs
   const csvInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -23,24 +23,26 @@ export default function NewCampaignWizard() {
   const [campaignId, setCampaignId] = useState("");
   const [title, setTitle] = useState("");
   const [campaignType, setCampaignType] = useState("NEWSLETTER");
+  const [channel, setChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [basePrompt, setBasePrompt] = useState("");
   const [generationMode, setGenerationMode] = useState<"ai" | "standard">("ai");
-  
+  const [recipientSearch, setRecipientSearch] = useState("");
+
   // Event State (For MEETING Campaigns)
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("14:00");
   const [eventDuration, setEventDuration] = useState("30");
-  
+
   // Attachments State (For non-MEETING Campaigns)
   const [attachments, setAttachments] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  
+
   // Contacts State
   const [recipientTab, setRecipientTab] = useState<"CONTACTS" | "ORGANIZATIONS" | "GROUPS">("CONTACTS");
   const [contacts, setContacts] = useState<any[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
-  
+
   // What the user selects on the UI
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
@@ -72,7 +74,7 @@ export default function NewCampaignWizard() {
         const data = await res.json();
         setOrganizations(Array.isArray(data) ? data : []);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const fetchGroups = async () => {
@@ -82,7 +84,7 @@ export default function NewCampaignWizard() {
         const data = await res.json();
         setGroups(Array.isArray(data) ? data : []);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   useEffect(() => {
@@ -99,6 +101,7 @@ export default function NewCampaignWizard() {
         setCampaignId(data.id);
         setTitle(data.title);
         setCampaignType(data.campaignType);
+        if (data.channel) setChannel(data.channel);
         if (data.template) {
           setBasePrompt(data.template.basePrompt || "");
         }
@@ -113,7 +116,7 @@ export default function NewCampaignWizard() {
         if (data.attachments) {
           setAttachments(data.attachments);
         }
-        
+
         // Auto-select recipients
         if (data.recipients && data.recipients.length > 0) {
           setSelectedContactIds(data.recipients.map((r: any) => r.contactId));
@@ -137,20 +140,20 @@ export default function NewCampaignWizard() {
       try {
         const text = event.target?.result as string;
         const rows = text.split(/\r?\n/).map(r => r.split(","));
-        
+
         const newContactIds: string[] = [];
         for (let i = 1; i < rows.length; i++) {
           const [name, email, company, jobTitle] = rows[i];
           if (!name || !email) continue;
-          
+
           const res = await fetch("/api/contacts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              name: name.trim(), 
-              email: email.trim(), 
-              company: company?.trim(), 
-              jobTitle: jobTitle?.trim() 
+            body: JSON.stringify({
+              name: name.trim(),
+              email: email.trim(),
+              company: company?.trim(),
+              jobTitle: jobTitle?.trim()
             }),
           });
           if (res.ok) {
@@ -176,11 +179,11 @@ export default function NewCampaignWizard() {
 
     setIsUploading(true);
     setError("");
-    
+
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        
+
         // Convert file to Base64
         const reader = new FileReader();
         const base64Promise = new Promise<string>((resolve, reject) => {
@@ -266,7 +269,7 @@ export default function NewCampaignWizard() {
         const res = await fetch(`/api/campaigns/${campaignId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, campaignType })
+          body: JSON.stringify({ title, campaignType, channel })
         });
         if (!res.ok) throw new Error("Failed to update campaign");
         setStep(2);
@@ -275,7 +278,7 @@ export default function NewCampaignWizard() {
         const res = await fetch("/api/campaigns", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, campaignType, description: "New AI Campaign" })
+          body: JSON.stringify({ title, campaignType, channel, description: "New AI Campaign" })
         });
         if (!res.ok) throw new Error("Failed to create campaign");
         const data = await res.json();
@@ -289,26 +292,42 @@ export default function NewCampaignWizard() {
     }
   };
 
+  useEffect(() => {
+    const isSingleContact = selectedContactIds.length === 1 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0;
+    if (isSingleContact && generationMode === "ai") {
+      setGenerationMode("standard");
+    }
+  }, [selectedContactIds, selectedGroupIds, selectedOrgIds, generationMode]);
+
+  useEffect(() => {
+    // Cleanup interval on unmount
+    return () => {
+      if (generationInterval) {
+        clearInterval(generationInterval);
+      }
+    };
+  }, [generationInterval]);
+
   const handleSaveRecipients = async () => {
     if (selectedContactIds.length === 0 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0) {
       setError("Please select at least one recipient, organization, or group.");
       return;
     }
-    
+
     setLoading(true);
     setError("");
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/recipients`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           contactIds: selectedContactIds,
           groupIds: selectedGroupIds,
           organizationIds: selectedOrgIds
         })
       });
       if (!res.ok) throw new Error("Failed to save recipients");
-      
+
       setStep(3);
     } catch (err: any) {
       setError(err.message);
@@ -327,7 +346,7 @@ export default function NewCampaignWizard() {
         body: JSON.stringify({ basePrompt })
       });
       if (!res.ok) throw new Error("Failed to save base prompt");
-      
+
       setStep(4);
     } catch (err: any) {
       setError(err.message);
@@ -339,10 +358,10 @@ export default function NewCampaignWizard() {
   const handleStartGeneration = async (regenerate: boolean = false) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/generate`, { 
+      const res = await fetch(`/api/campaigns/${campaignId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           useAi: generationMode === "ai",
           regenerate,
           eventDate: eventDate && eventTime ? `${eventDate}T${eventTime}:00Z` : undefined,
@@ -350,22 +369,22 @@ export default function NewCampaignWizard() {
         })
       });
       if (!res.ok) throw new Error("Failed to start generation");
-      
+
       setStep(5);
-      
+
       const interval = setInterval(async () => {
         const statusRes = await fetch(`/api/campaigns/${campaignId}`);
         if (statusRes.ok) {
           const campaignData = await statusRes.json();
           // Wait for the background worker to finish generation and mark campaign as READY
-          if (campaignData.status === "READY") {
+          if (campaignData.status === "READY" || campaignData.status === "DRAFT") {
             setCampaignRecipients(campaignData.recipients || []);
             clearInterval(interval);
             setStep(6);
           }
         }
       }, 3000);
-      
+
       setGenerationInterval(interval);
     } catch (e: any) {
       setError(e.message);
@@ -389,7 +408,7 @@ export default function NewCampaignWizard() {
       });
 
       if (!res.ok) throw new Error("Failed to save draft");
-      
+
       // Update local state
       setCampaignRecipients(prev => prev.map(r => r.id === editingDraft.id ? { ...r, ...editingDraft, approvalStatus: "APPROVED" } : r));
       setEditingDraft(null);
@@ -408,7 +427,7 @@ export default function NewCampaignWizard() {
       });
 
       if (!res.ok) throw new Error("Failed to delete draft");
-      
+
       // Update local state
       setCampaignRecipients(prev => prev.filter(r => r.id !== deletingDraftId));
       setDeletingDraftId(null);
@@ -427,7 +446,7 @@ export default function NewCampaignWizard() {
     setLoading(true);
     setError("");
     try {
-      const payload = scheduleType === "scheduled" && scheduledDate 
+      const payload = scheduleType === "scheduled" && scheduledDate
         ? { scheduledAt: new Date(scheduledDate).toISOString() }
         : {};
 
@@ -436,12 +455,12 @@ export default function NewCampaignWizard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to schedule campaign");
       }
-      
+
       router.push("/dashboard/campaigns");
     } catch (err: any) {
       setError(err.message);
@@ -467,10 +486,10 @@ export default function NewCampaignWizard() {
             const stepNum = idx + 1;
             const isActive = step === stepNum;
             const isCompleted = stepNum < step;
-            
+
             return (
-              <div 
-                key={s} 
+              <div
+                key={s}
                 className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${isActive ? 'bg-indigo-500/10 text-indigo-400 font-medium' : isCompleted ? 'text-zinc-400' : 'text-zinc-600'}`}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${isActive ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : isCompleted ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'border border-zinc-700'}`}>
@@ -484,7 +503,7 @@ export default function NewCampaignWizard() {
 
         {/* Main Step Content */}
         <div className="flex-1 p-10 overflow-y-auto flex flex-col relative pb-32">
-          
+
           {error && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl">{error}</div>}
 
           {/* STEP 1: CAMPAIGN TYPE */}
@@ -492,16 +511,34 @@ export default function NewCampaignWizard() {
             <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h2 className="text-2xl font-medium text-white mb-2">What kind of campaign is this?</h2>
               <p className="text-zinc-400 mb-8">Set up the foundation for how Aura should format these emails.</p>
-              
+
               <div className="mb-8 flex flex-col gap-2">
                 <label className="text-sm font-medium text-zinc-400">Campaign Title</label>
-                <input 
-                  type="text" 
-                  value={title} 
-                  onChange={e => setTitle(e.target.value)} 
-                  className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition text-lg" 
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition text-lg"
                   placeholder="e.g. Q3 Investor Update"
                 />
+              </div>
+
+              <div className="mb-6">
+                <label className="text-sm font-medium text-zinc-400 mb-2 block">Delivery Channel</label>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setChannel("EMAIL")}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-xl border transition-all ${channel === "EMAIL" ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-white/5 border-white/10 hover:bg-white/10 text-white"}`}
+                  >
+                    <Mail className="w-5 h-5" /> Email Broadcast
+                  </button>
+                  <button
+                    onClick={() => setChannel("WHATSAPP")}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-xl border transition-all ${channel === "WHATSAPP" ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" : "bg-white/5 border-white/10 hover:bg-white/10 text-white"}`}
+                  >
+                    <MessageCircle className="w-5 h-5" /> WhatsApp Broadcast
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -511,8 +548,8 @@ export default function NewCampaignWizard() {
                   { id: "FOLLOW_UP", title: "Follow-up", desc: "Checks in on a previous thread or meeting", icon: "👋" },
                   { id: "ANNOUNCEMENT", title: "Announcement", desc: "Company updates or product launches", icon: "🚀" },
                 ].map((type) => (
-                  <button 
-                    key={type.title} 
+                  <button
+                    key={type.title}
                     onClick={() => setCampaignType(type.id)}
                     className={`text-left border p-6 rounded-xl transition group ${campaignType === type.id ? 'bg-indigo-500/10 border-indigo-500' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                   >
@@ -530,10 +567,10 @@ export default function NewCampaignWizard() {
             <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h2 className="text-2xl font-medium text-white mb-2">Who is receiving this?</h2>
               <p className="text-zinc-400 mb-6">Select specific contacts, or target entire organizations and groups.</p>
-              
+
               <div className="flex gap-2 mb-4">
                 {["CONTACTS", "ORGANIZATIONS", "GROUPS"].map(tab => (
-                  <button 
+                  <button
                     key={tab}
                     onClick={() => setRecipientTab(tab as any)}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition ${recipientTab === tab ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-white/5 text-zinc-400 hover:text-white border border-transparent hover:border-white/10'}`}
@@ -550,26 +587,39 @@ export default function NewCampaignWizard() {
                     <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/20">
                       <span className="text-sm text-zinc-400">{selectedContactIds.length} selected</span>
                       <div className="flex items-center gap-4">
-                        <input 
-                          type="file" 
-                          accept=".csv" 
-                          ref={csvInputRef} 
-                          className="hidden" 
-                          onChange={handleCsvUpload} 
+                        <input
+                          type="text"
+                          value={recipientSearch}
+                          onChange={(e) => setRecipientSearch(e.target.value)}
+                          placeholder="Search contacts..."
+                          className="bg-black/50 border border-white/10 rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+                        />
+                        <input
+                          type="file"
+                          accept=".csv"
+                          ref={csvInputRef}
+                          className="hidden"
+                          onChange={handleCsvUpload}
                         />
                         <button onClick={() => csvInputRef.current?.click()} className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
                           <Upload className="w-3 h-3" /> Import CSV
                         </button>
-                        <button onClick={() => setSelectedContactIds(contacts.map(c => c.id))} className="text-xs text-indigo-400 hover:text-indigo-300">Select All Contacts</button>
+                        <button onClick={() => setSelectedContactIds(contacts.map(c => c.id))} className="text-xs text-indigo-400 hover:text-indigo-300">Select All</button>
                       </div>
                     </div>
                     <div className="overflow-y-auto p-4 flex flex-col gap-6">
                       {(() => {
+                        const filteredContacts = contacts.filter(c =>
+                          (c.name || "").toLowerCase().includes(recipientSearch.toLowerCase()) ||
+                          (c.email || "").toLowerCase().includes(recipientSearch.toLowerCase()) ||
+                          (c.company || "").toLowerCase().includes(recipientSearch.toLowerCase())
+                        );
+
                         const contactsByGroup: Record<string, any[]> = {};
                         groups.forEach(g => { contactsByGroup[g.name] = []; });
                         contactsByGroup["Ungrouped Contacts"] = [];
 
-                        contacts.forEach(c => {
+                        filteredContacts.forEach(c => {
                           if (!c.groupMemberships || c.groupMemberships.length === 0) {
                             contactsByGroup["Ungrouped Contacts"].push(c);
                           } else {
@@ -583,12 +633,12 @@ export default function NewCampaignWizard() {
 
                         return Object.entries(contactsByGroup).map(([groupName, groupContacts]) => {
                           if (groupContacts.length === 0) return null;
-                          
+
                           return (
                             <div key={groupName} className="flex flex-col gap-2">
                               <div className="flex items-center justify-between pl-1 mb-1">
                                 <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{groupName}</h4>
-                                <button 
+                                <button
                                   onClick={() => setSelectedContactIds(prev => {
                                     const next = new Set(prev);
                                     const allSelected = groupContacts.every(c => next.has(c.id));
@@ -607,14 +657,14 @@ export default function NewCampaignWizard() {
                               <div className="flex flex-col gap-1">
                                 {groupContacts.map(contact => (
                                   <label key={contact.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/10 transition bg-black/10">
-                                    <input 
-                                      type="checkbox" 
+                                    <input
+                                      type="checkbox"
                                       checked={selectedContactIds.includes(contact.id)}
                                       onChange={(e) => {
                                         if (e.target.checked) setSelectedContactIds(prev => [...prev, contact.id]);
                                         else setSelectedContactIds(prev => prev.filter(id => id !== contact.id));
                                       }}
-                                      className="w-4 h-4 rounded border-white/20 bg-black text-indigo-500 focus:ring-indigo-500" 
+                                      className="w-4 h-4 rounded border-white/20 bg-black text-indigo-500 focus:ring-indigo-500"
                                     />
                                     <div className="flex flex-col">
                                       <span className="text-white text-sm font-medium">{contact.name}</span>
@@ -644,14 +694,14 @@ export default function NewCampaignWizard() {
                       ) : (
                         organizations.map(org => (
                           <label key={org.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/10 transition">
-                            <input 
-                              type="checkbox" 
+                            <input
+                              type="checkbox"
                               checked={selectedOrgIds.includes(org.id)}
                               onChange={(e) => {
                                 if (e.target.checked) setSelectedOrgIds(prev => [...prev, org.id]);
                                 else setSelectedOrgIds(prev => prev.filter(id => id !== org.id));
                               }}
-                              className="w-4 h-4 rounded border-white/20 bg-black text-indigo-500 focus:ring-indigo-500" 
+                              className="w-4 h-4 rounded border-white/20 bg-black text-indigo-500 focus:ring-indigo-500"
                             />
                             <div className="flex flex-col">
                               <span className="text-white text-sm font-medium">{org.name}</span>
@@ -677,14 +727,14 @@ export default function NewCampaignWizard() {
                       ) : (
                         groups.map(grp => (
                           <label key={grp.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/10 transition">
-                            <input 
-                              type="checkbox" 
+                            <input
+                              type="checkbox"
                               checked={selectedGroupIds.includes(grp.id)}
                               onChange={(e) => {
                                 if (e.target.checked) setSelectedGroupIds(prev => [...prev, grp.id]);
                                 else setSelectedGroupIds(prev => prev.filter(id => id !== grp.id));
                               }}
-                              className="w-4 h-4 rounded border-white/20 bg-black text-indigo-500 focus:ring-indigo-500" 
+                              className="w-4 h-4 rounded border-white/20 bg-black text-indigo-500 focus:ring-indigo-500"
                             />
                             <div className="flex flex-col">
                               <span className="text-white text-sm font-medium">{grp.name}</span>
@@ -705,8 +755,8 @@ export default function NewCampaignWizard() {
             <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h2 className="text-2xl font-medium text-white mb-2">Base Prompt & Template</h2>
               <p className="text-zinc-400 mb-8">Write the core message. Aura will personalize this for each recipient based on their profile context.</p>
-              
-              <textarea 
+
+              <textarea
                 value={basePrompt}
                 onChange={(e) => setBasePrompt(e.target.value)}
                 className="w-full bg-black/50 border border-white/10 rounded-xl p-6 text-white min-h-[300px] focus:outline-none focus:border-indigo-500 transition resize-y mb-6"
@@ -716,27 +766,43 @@ export default function NewCampaignWizard() {
               <div className="bg-white/5 border border-white/10 p-6 rounded-xl">
                 <h3 className="text-white font-medium mb-4">Content Generation Mode</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div 
-                    onClick={() => setGenerationMode("ai")}
-                    className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
-                  >
-                    <div className="flex items-center gap-2 text-white font-medium">
-                      <Wand2 className="w-4 h-4 text-indigo-400" />
-                      Deep AI Personalization
-                    </div>
-                    <p className="text-sm text-zinc-400">Aura will rewrite and personalize the base prompt specifically for each recipient using their profile data.</p>
-                  </div>
-                  
-                  <div 
-                    onClick={() => setGenerationMode("standard")}
-                    className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "standard" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
-                  >
-                    <div className="flex items-center gap-2 text-white font-medium">
-                      <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                      AI Master Template
-                    </div>
-                    <p className="text-sm text-zinc-400">Aura will generate one polished, professional master email based on your prompt, and send that exact email to everyone.</p>
-                  </div>
+                  {(() => {
+                    const isSingleContact = selectedContactIds.length === 1 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0;
+                    return (
+                      <>
+                        <div 
+                          onClick={() => {
+                            if (!isSingleContact) setGenerationMode("ai");
+                          }}
+                          className={`p-4 rounded-xl border transition flex flex-col gap-2 ${
+                            isSingleContact ? "opacity-50 cursor-not-allowed bg-black/50 border-white/5" : "cursor-pointer " + (generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30")
+                          }`}
+                          title={isSingleContact ? "Deep AI Personalization is disabled when targeting only a single contact." : ""}
+                        >
+                          <div className="flex items-center gap-2 text-white font-medium">
+                            <Wand2 className="w-4 h-4 text-indigo-400" />
+                            Deep AI Personalization
+                          </div>
+                          <p className="text-sm text-zinc-400">
+                            {isSingleContact ? "Disabled because you are only messaging 1 person." : "Aura will rewrite and personalize the base prompt specifically for each recipient using their profile data."}
+                          </p>
+                        </div>
+                        
+                        <div 
+                          onClick={() => setGenerationMode("standard")}
+                          className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "standard" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
+                        >
+                          <div className="flex items-center gap-2 text-white font-medium">
+                            <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                            AI Master Template
+                          </div>
+                          <p className="text-sm text-zinc-400">
+                            Aura will generate one polished, professional master email based on your prompt, and send that exact email to everyone.
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -749,11 +815,11 @@ export default function NewCampaignWizard() {
                 {campaignType === "MEETING" ? "Calendar & Meeting Settings" : "Attachments"}
               </h2>
               <p className="text-zinc-400 mb-8">
-                {campaignType === "MEETING" 
-                  ? "Configure how Aura should schedule these meetings and generate Google Meet links." 
+                {campaignType === "MEETING"
+                  ? "Configure how Aura should schedule these meetings and generate Google Meet links."
                   : "Attach any files, pitch decks, or resources to this campaign."}
               </p>
-              
+
               {campaignType === "MEETING" ? (
                 <div className="flex flex-col gap-6">
                   <div className="bg-indigo-500/10 border border-indigo-500/20 p-6 rounded-xl flex items-start gap-4">
@@ -765,53 +831,53 @@ export default function NewCampaignWizard() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-6">
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium text-zinc-400">Event Date</label>
-                        <input 
-                          type="date"
-                          value={eventDate}
-                          onChange={(e) => setEventDate(e.target.value)}
-                          className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium text-zinc-400">Event Time</label>
-                        <input 
-                          type="time"
-                          value={eventTime}
-                          onChange={(e) => setEventTime(e.target.value)}
-                          className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-zinc-400">Event Date</label>
+                      <input
+                        type="date"
+                        value={eventDate}
+                        onChange={(e) => setEventDate(e.target.value)}
+                        className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+                      />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium text-zinc-400">Meeting Duration</label>
-                      <select 
-                        value={eventDuration}
-                        onChange={(e) => setEventDuration(e.target.value)}
+                      <label className="text-sm font-medium text-zinc-400">Event Time</label>
+                      <input
+                        type="time"
+                        value={eventTime}
+                        onChange={(e) => setEventTime(e.target.value)}
                         className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
-                      >
-                        <option value="15">15 Minutes</option>
-                        <option value="30">30 Minutes</option>
-                        <option value="45">45 Minutes</option>
-                        <option value="60">1 Hour</option>
-                        <option value="90">1.5 Hours</option>
-                        <option value="120">2 Hours</option>
-                      </select>
+                      />
                     </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-zinc-400">Meeting Duration</label>
+                    <select
+                      value={eventDuration}
+                      onChange={(e) => setEventDuration(e.target.value)}
+                      className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="15">15 Minutes</option>
+                      <option value="30">30 Minutes</option>
+                      <option value="45">45 Minutes</option>
+                      <option value="60">1 Hour</option>
+                      <option value="90">1.5 Hours</option>
+                      <option value="120">2 Hours</option>
+                    </select>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
-                  <div 
+                  <div
                     onClick={() => fileInputRef.current?.click()}
                     className="bg-white/5 border border-dashed border-white/20 rounded-xl p-12 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-white/10 transition"
                   >
-                    <input 
-                      type="file" 
-                      multiple 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      onChange={handleAttachmentUpload} 
+                    <input
+                      type="file"
+                      multiple
+                      ref={fileInputRef}
+                      className="hidden"
+                      onChange={handleAttachmentUpload}
                     />
                     {isUploading ? (
                       <Loader2 className="w-8 h-8 text-indigo-400 mb-4 animate-spin" />
@@ -831,14 +897,14 @@ export default function NewCampaignWizard() {
                         <div key={att.id || att.originalFilename} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" /></svg>
                             </div>
                             <div className="flex flex-col">
                               <span className="text-sm font-medium text-white">{att.originalFilename}</span>
                               <span className="text-xs text-zinc-500">{(att.size / 1024).toFixed(1)} KB</span>
                             </div>
                           </div>
-                          <button 
+                          <button
                             onClick={() => handleDeleteAttachment(att.id)}
                             className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition"
                           >
@@ -877,14 +943,14 @@ export default function NewCampaignWizard() {
                   <h2 className="text-2xl font-medium text-white mb-2">Review & Approve Drafts</h2>
                   <p className="text-zinc-400">Review the AI-generated personalized emails before they are sent.</p>
                 </div>
-                <button 
+                <button
                   onClick={handleApproveAll}
                   className="bg-white/10 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-white/20 transition border border-white/10"
                 >
                   Approve All
                 </button>
               </div>
-              
+
               <div className="bg-black/40 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-xl">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -923,13 +989,13 @@ export default function NewCampaignWizard() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
+                            <button
                               onClick={() => setEditingDraft(recipient)}
                               className="text-indigo-400 hover:text-indigo-300 transition"
                             >
                               Edit
                             </button>
-                            <button 
+                            <button
                               onClick={() => setDeletingDraftId(recipient.id)}
                               className="text-red-400 hover:text-red-300 transition"
                             >
@@ -955,15 +1021,14 @@ export default function NewCampaignWizard() {
             <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
               <h2 className="text-2xl font-medium text-white mb-2">Schedule Campaign</h2>
               <p className="text-zinc-400 mb-8">Decide when Aura should send out these personalized emails.</p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div 
+                <div
                   onClick={() => setScheduleType("immediate")}
-                  className={`p-6 rounded-2xl border cursor-pointer transition flex flex-col gap-3 ${
-                    scheduleType === "immediate" 
-                      ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]" 
+                  className={`p-6 rounded-2xl border cursor-pointer transition flex flex-col gap-3 ${scheduleType === "immediate"
+                      ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
                       : "bg-black/40 border-white/10 hover:bg-white/5"
-                  }`}
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-xl">🚀</div>
@@ -974,14 +1039,13 @@ export default function NewCampaignWizard() {
                   <h3 className="text-white font-medium text-lg">Send Immediately</h3>
                   <p className="text-sm text-zinc-400">Emails will be dispatched as soon as you hit launch.</p>
                 </div>
-                
-                <div 
+
+                <div
                   onClick={() => setScheduleType("scheduled")}
-                  className={`p-6 rounded-2xl border cursor-pointer transition flex flex-col gap-3 ${
-                    scheduleType === "scheduled" 
-                      ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]" 
+                  className={`p-6 rounded-2xl border cursor-pointer transition flex flex-col gap-3 ${scheduleType === "scheduled"
+                      ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
                       : "bg-black/40 border-white/10 hover:bg-white/5"
-                  }`}
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-xl">🕒</div>
@@ -998,8 +1062,8 @@ export default function NewCampaignWizard() {
                 <div className="animate-in fade-in slide-in-from-top-4 duration-300">
                   <div className="bg-black/40 border border-white/10 rounded-2xl p-6">
                     <label className="block text-sm font-medium text-zinc-400 mb-3">Select Date & Time</label>
-                    <input 
-                      type="datetime-local" 
+                    <input
+                      type="datetime-local"
                       value={scheduledDate}
                       onChange={e => setScheduledDate(e.target.value)}
                       className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition [color-scheme:dark]"
@@ -1013,7 +1077,7 @@ export default function NewCampaignWizard() {
           {/* Bottom Nav */}
           <div className="fixed bottom-0 left-0 md:left-64 right-0 p-6 bg-[#0F0F12]/80 backdrop-blur-md border-t border-white/10 flex justify-end gap-4 z-10">
             {step > 1 && step !== 5 && (
-              <button 
+              <button
                 onClick={() => setStep(step === 6 ? 4 : step - 1)}
                 disabled={loading}
                 className="text-zinc-400 px-6 py-3 rounded-full text-sm font-medium hover:text-white transition disabled:opacity-50"
@@ -1021,9 +1085,9 @@ export default function NewCampaignWizard() {
                 Back
               </button>
             )}
-            
+
             {step === 1 && (
-              <button 
+              <button
                 onClick={handleCreateCampaign}
                 disabled={loading}
                 className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:bg-zinc-200 transition flex items-center gap-2 disabled:opacity-50"
@@ -1033,7 +1097,7 @@ export default function NewCampaignWizard() {
             )}
 
             {step === 2 && (
-              <button 
+              <button
                 onClick={handleSaveRecipients}
                 disabled={loading}
                 className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:bg-zinc-200 transition flex items-center gap-2 disabled:opacity-50"
@@ -1043,7 +1107,7 @@ export default function NewCampaignWizard() {
             )}
 
             {step === 3 && (
-              <button 
+              <button
                 onClick={handleSavePrompt}
                 disabled={loading}
                 className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:bg-zinc-200 transition flex items-center gap-2 disabled:opacity-50"
@@ -1056,14 +1120,14 @@ export default function NewCampaignWizard() {
               <>
                 {campaignRecipients.length > 0 && campaignRecipients.some(r => r.approvalStatus !== "PENDING") ? (
                   <div className="flex gap-4">
-                    <button 
+                    <button
                       onClick={() => handleStartGeneration(true)}
                       disabled={loading}
                       className="bg-zinc-800 text-white px-6 py-3 rounded-full text-sm font-medium hover:bg-zinc-700 transition flex items-center gap-2 disabled:opacity-50"
                     >
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Regenerate Drafts <Wand2 className="w-4 h-4" /></>}
                     </button>
-                    <button 
+                    <button
                       onClick={() => setStep(6)}
                       disabled={loading}
                       className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:bg-zinc-200 transition shadow-[0_0_20px_rgba(255,255,255,0.3)] flex items-center gap-2"
@@ -1072,7 +1136,7 @@ export default function NewCampaignWizard() {
                     </button>
                   </div>
                 ) : (
-                  <button 
+                  <button
                     onClick={() => handleStartGeneration(false)}
                     disabled={loading}
                     className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:bg-zinc-200 transition shadow-[0_0_20px_rgba(255,255,255,0.3)] flex items-center gap-2"
@@ -1084,7 +1148,7 @@ export default function NewCampaignWizard() {
             )}
 
             {step === 5 && (
-              <button 
+              <button
                 disabled
                 className="bg-white/10 text-white/50 px-8 py-3 rounded-full text-sm font-medium transition flex items-center gap-2 cursor-not-allowed"
               >
@@ -1093,7 +1157,7 @@ export default function NewCampaignWizard() {
             )}
 
             {step === 6 && (
-              <button 
+              <button
                 onClick={() => setStep(7)}
                 disabled={loading}
                 className="bg-white text-black px-8 py-3 rounded-full text-sm font-medium hover:bg-zinc-200 transition flex items-center gap-2 disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.3)]"
@@ -1103,7 +1167,7 @@ export default function NewCampaignWizard() {
             )}
 
             {step === 7 && (
-              <button 
+              <button
                 onClick={handleLaunchCampaign}
                 disabled={loading || (scheduleType === "scheduled" && !scheduledDate)}
                 className="bg-indigo-600 text-white px-8 py-3 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 disabled:opacity-50 shadow-[0_0_20px_rgba(99,102,241,0.4)]"
@@ -1119,7 +1183,7 @@ export default function NewCampaignWizard() {
       {editingDraft && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setEditingDraft(null)} />
-          
+
           <div className="relative w-full max-w-2xl bg-[#121214] h-full shadow-2xl border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
             <div className="flex items-center justify-between p-6 border-b border-white/10">
               <div>
@@ -1130,33 +1194,33 @@ export default function NewCampaignWizard() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-zinc-400">Subject Line</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editingDraft.personalizedSubject || ""}
                   onChange={e => setEditingDraft({ ...editingDraft, personalizedSubject: e.target.value })}
                   className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
                 />
               </div>
-              
+
               <div className="flex flex-col gap-2 flex-1">
                 <label className="text-sm font-medium text-zinc-400">Email Body</label>
-                <textarea 
+                <textarea
                   value={editingDraft.personalizedBody || ""}
                   onChange={e => setEditingDraft({ ...editingDraft, personalizedBody: e.target.value })}
                   className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition flex-1 resize-none min-h-[300px]"
                 />
               </div>
             </div>
-            
+
             <div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-[#0F0F12]">
               <button onClick={() => setEditingDraft(null)} className="px-5 py-2.5 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition">
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleSaveDraft}
                 disabled={isDraftSaving}
                 className="bg-indigo-600 text-white px-6 py-2.5 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20 disabled:opacity-50"
@@ -1181,15 +1245,15 @@ export default function NewCampaignWizard() {
               <p className="text-zinc-400 text-sm mb-6">
                 This action cannot be undone. This recipient will be removed from the campaign entirely.
               </p>
-              
+
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setDeletingDraftId(null)}
                   className="flex-1 bg-white/5 text-white px-4 py-2.5 rounded-full text-sm font-medium hover:bg-white/10 transition"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleDeleteDraft}
                   className="flex-1 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-4 py-2.5 rounded-full text-sm font-medium transition border border-red-500/20 hover:border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.15)] hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]"
                 >

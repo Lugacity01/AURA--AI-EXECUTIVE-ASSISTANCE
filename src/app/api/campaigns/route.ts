@@ -24,8 +24,15 @@ export async function POST(request: Request) {
     });
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const data = await request.json();
-    const campaign = await CampaignService.createCampaign(session.user.id, data);
+    const body = await request.json();
+    const { title, description, campaignType, channel } = body;
+
+    const campaign = await CampaignService.createCampaign(session.user.id, {
+      title,
+      description,
+      campaignType: campaignType || "NEWSLETTER",
+      channel: channel || "EMAIL"
+    });
 
     return NextResponse.json(campaign);
   } catch (error: any) {

@@ -63,6 +63,11 @@ enum CampaignType {
   CUSTOM
 }
 
+enum CommunicationChannel {
+  EMAIL
+  WHATSAPP
+}
+
 enum FollowUpType {
   REMINDER
   FOLLOW_UP
@@ -504,6 +509,7 @@ model Campaign {
   parentCampaign     Campaign?      @relation("CampaignFollowUps", fields: [parentCampaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   followUps          Campaign[]     @relation("CampaignFollowUps")
   followUpType       FollowUpType?
+  channel            CommunicationChannel @default(EMAIL)
   userId             String
   status             CampaignStatus @default(DRAFT)
   scheduledAt        DateTime?

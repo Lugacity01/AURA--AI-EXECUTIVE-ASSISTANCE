@@ -145,6 +145,7 @@ export default function CampaignDetailsPage() {
 
   const handleSendNow = async () => {
     setIsSending(true);
+    setError("");
     try {
       const res = await fetch(`/api/campaigns/${id}/schedule`, {
         method: "POST",
@@ -160,6 +161,25 @@ export default function CampaignDetailsPage() {
     } catch (err: any) {
       setError(err.message);
       showToast("Error starting campaign");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    setIsSending(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/campaigns/${id}/retry`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to retry campaign");
+      }
+      showToast("Failed recipients have been requeued!");
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      showToast("Error retrying failed recipients");
     } finally {
       setIsSending(false);
     }
@@ -261,6 +281,16 @@ export default function CampaignDetailsPage() {
         )}
         {campaign.status === 'COMPLETED' && (
           <div className="flex items-center gap-3">
+            {campaign.recipients?.some(r => r.sendStatus === 'FAILED') && (
+              <button 
+                onClick={handleRetryFailed}
+                disabled={isSending}
+                className="bg-red-500/10 text-red-400 border border-red-500/20 px-5 py-2 rounded-full text-sm font-medium hover:bg-red-500/20 transition flex items-center gap-2 shadow-lg shadow-red-500/10 disabled:opacity-50"
+              >
+                {isSending ? <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" /> : <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>}
+                Retry Failed
+              </button>
+            )}
             <button 
               onClick={() => setIsAddModalOpen(true)}
               className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -381,6 +411,7 @@ export default function CampaignDetailsPage() {
                 <tr>
                   <th className="px-6 py-4 font-medium">Contact Name</th>
                   <th className="px-6 py-4 font-medium">Email</th>
+                  <th className="px-6 py-4 font-medium">Phone</th>
                   <th className="px-6 py-4 font-medium">Approval Status</th>
                   <th className="px-6 py-4 font-medium">Send Status</th>
                   <th className="px-6 py-4 font-medium text-right">View Draft</th>
@@ -389,7 +420,7 @@ export default function CampaignDetailsPage() {
               <tbody className="divide-y divide-white/5">
                 {(!campaign.recipients || campaign.recipients.length === 0) ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-zinc-500">
+                    <td colSpan={6} className="px-6 py-12 text-center text-zinc-500">
                       No recipients added to this campaign yet.
                     </td>
                   </tr>
@@ -398,6 +429,7 @@ export default function CampaignDetailsPage() {
                     <tr key={recipient.id} className="hover:bg-white/[0.02] transition">
                       <td className="px-6 py-4 text-white font-medium">{recipient.contact?.name || "Unknown"}</td>
                       <td className="px-6 py-4">{recipient.contact?.email || "-"}</td>
+                      <td className="px-6 py-4">{recipient.contact?.phone || "-"}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 rounded-md text-xs ${
                           recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :

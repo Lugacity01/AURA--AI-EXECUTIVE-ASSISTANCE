@@ -281,7 +281,7 @@ export default function CampaignDetailsPage() {
         )}
         {campaign.status === 'COMPLETED' && (
           <div className="flex items-center gap-3">
-            {campaign.recipients?.some(r => r.sendStatus === 'FAILED') && (
+            {campaign.recipients?.some((r: any) => r.sendStatus === 'FAILED') && (
               <button 
                 onClick={handleRetryFailed}
                 disabled={isSending}

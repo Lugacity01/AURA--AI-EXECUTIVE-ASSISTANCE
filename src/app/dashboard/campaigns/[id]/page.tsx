@@ -20,6 +20,7 @@ export default function CampaignDetailsPage() {
   const [recipientFilter, setRecipientFilter] = useState("PENDING_RESPONSE");
   const [instructions, setInstructions] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [includeMeetLink, setIncludeMeetLink] = useState(true);
   
   // Preview State
   const [hasPreview, setHasPreview] = useState(false);
@@ -40,6 +41,9 @@ export default function CampaignDetailsPage() {
 
   // Recipient Preview Modal State
   const [previewRecipient, setPreviewRecipient] = useState<any>(null);
+  const [editSubject, setEditSubject] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [isSavingRecipient, setIsSavingRecipient] = useState(false);
 
   // Stuck state tracking
   const lastProgressRef = useRef<number>(-1);
@@ -163,7 +167,8 @@ export default function CampaignDetailsPage() {
           recipientFilter,
           additionalInstructions: instructions,
           masterSubject: (!isIntelligentMode && hasPreview) ? previewSubject : undefined,
-          masterBody: (!isIntelligentMode && hasPreview) ? previewBody : undefined
+          masterBody: (!isIntelligentMode && hasPreview) ? previewBody : undefined,
+          includeMeetLink: campaign.campaignType === 'MEETING' ? includeMeetLink : undefined
         })
       });
 
@@ -244,6 +249,31 @@ export default function CampaignDetailsPage() {
       showToast("Error resuming campaign");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleSaveRecipient = async () => {
+    if (!previewRecipient) return;
+    setIsSavingRecipient(true);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/recipients/${previewRecipient.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personalizedSubject: editSubject,
+          personalizedBody: editBody,
+          approvalStatus: previewRecipient.approvalStatus,
+        })
+      });
+      if (!res.ok) throw new Error("Failed to save draft");
+      showToast("Draft updated successfully!");
+      setPreviewRecipient(null);
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      showToast("Error saving draft");
+    } finally {
+      setIsSavingRecipient(false);
     }
   };
 
@@ -526,10 +556,14 @@ export default function CampaignDetailsPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button 
-                            onClick={() => setPreviewRecipient(recipient)}
+                            onClick={() => {
+                              setPreviewRecipient(recipient);
+                              setEditSubject(recipient.personalizedSubject || "");
+                              setEditBody(recipient.personalizedBody || "");
+                            }}
                             className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full"
                           >
-                            Preview <ExternalLink className="w-3 h-3" />
+                            Preview / Edit <ExternalLink className="w-3 h-3" />
                           </button>
                         </td>
                       </tr>
@@ -554,7 +588,11 @@ export default function CampaignDetailsPage() {
                         <p className="text-sm text-zinc-400 truncate">{recipient.contact?.email || recipient.contact?.phone}</p>
                       </div>
                       <button 
-                        onClick={() => setPreviewRecipient(recipient)}
+                        onClick={() => {
+                          setPreviewRecipient(recipient);
+                          setEditSubject(recipient.personalizedSubject || "");
+                          setEditBody(recipient.personalizedBody || "");
+                        }}
                         className="text-indigo-400 bg-indigo-500/10 p-2 rounded-lg hover:bg-indigo-500/20 transition shrink-0 flex items-center gap-2 text-xs font-medium uppercase tracking-wider"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -641,6 +679,22 @@ export default function CampaignDetailsPage() {
                     : "Targets everyone from the original campaign."}
                 </p>
               </div>
+
+              {campaign?.campaignType === 'MEETING' && (
+                <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setIncludeMeetLink(!includeMeetLink)}>
+                  <div className="pt-0.5">
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${includeMeetLink ? "bg-indigo-500 border-indigo-500" : "border-zinc-500"}`}>
+                      {includeMeetLink && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-white">Re-attach Google Meet Link</h4>
+                    <p className="text-xs text-indigo-300/70 mt-1">
+                      If enabled, the Google Meet link from the original campaign will automatically be appended to the bottom of this follow-up email.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {hasPreview ? (
                 <div className="flex flex-col gap-4">
@@ -851,26 +905,60 @@ export default function CampaignDetailsPage() {
             <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[70vh]">
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Subject</label>
-                <div className="bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white">
-                  {previewRecipient.personalizedSubject || "No subject generated yet."}
-                </div>
+                {previewRecipient.sendStatus === 'SENT' ? (
+                  <div className="bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white">
+                    {previewRecipient.personalizedSubject || "No subject generated yet."}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500"
+                    value={editSubject}
+                    onChange={(e) => setEditSubject(e.target.value)}
+                  />
+                )}
               </div>
               
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Body</label>
-                <div className="bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white whitespace-pre-wrap min-h-[150px]">
-                  {previewRecipient.personalizedBody || "No body generated yet."}
-                </div>
+                {previewRecipient.sendStatus === 'SENT' ? (
+                  <div className="bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white whitespace-pre-wrap min-h-[150px]">
+                    {previewRecipient.personalizedBody || "No body generated yet."}
+                  </div>
+                ) : (
+                  <textarea
+                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-48 resize-none"
+                    value={editBody}
+                    onChange={(e) => setEditBody(e.target.value)}
+                  />
+                )}
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end">
+            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
               <button 
                 onClick={() => setPreviewRecipient(null)}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition border border-white/10"
               >
-                Close Preview
+                {previewRecipient.sendStatus === 'SENT' ? "Close" : "Cancel"}
               </button>
+              
+              {previewRecipient.sendStatus !== 'SENT' && (
+                <button 
+                  onClick={handleSaveRecipient}
+                  disabled={isSavingRecipient}
+                  className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
+                >
+                  {isSavingRecipient ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

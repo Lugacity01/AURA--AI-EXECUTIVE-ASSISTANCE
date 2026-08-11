@@ -515,6 +515,8 @@ model Campaign {
   scheduledAt        DateTime?
   eventDate          DateTime?
   eventDuration      Int?
+  meetLink           String?
+  includeMeetLink    Boolean        @default(true)
   
   
   // Analytics Fields

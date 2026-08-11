@@ -20,7 +20,8 @@ export class FollowUpService {
     additionalInstructions: string,
     customRecipientIds: string[] = [],
     masterSubject?: string,
-    masterBody?: string
+    masterBody?: string,
+    includeMeetLink: boolean = true
   ) {
     // 1. Fetch original campaign
     const originalCampaign = await prisma.campaign.findUnique({
@@ -61,6 +62,8 @@ export class FollowUpService {
         userId: userId,
         status: CampaignStatus.GENERATING, // Start in generating state
         template: originalCampaign.templateId ? { connect: { id: originalCampaign.templateId } } : undefined,
+        includeMeetLink: includeMeetLink,
+        meetLink: originalCampaign.meetLink // Copy parent's meetLink over just in case
       }
     });
 

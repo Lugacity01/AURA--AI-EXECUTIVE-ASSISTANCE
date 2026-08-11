@@ -57,7 +57,9 @@ export async function POST(
       where: { id },
       data: {
         totalRecipients: total,
-        pendingRecipients: pending
+        pendingRecipients: pending,
+        // If the campaign was already finished, transition to GENERATING so the UI starts polling
+        ...( (campaign.status === "COMPLETED" || campaign.status === "FAILED" || campaign.status === "READY") ? { status: "GENERATING" } : {} )
       }
     });
 

@@ -15,7 +15,7 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
 
-    const { followUpType, recipientFilter, additionalInstructions, customRecipientIds, masterSubject, masterBody } = body;
+    const { followUpType, recipientFilter, additionalInstructions, customRecipientIds, masterSubject, masterBody, includeMeetLink } = body;
 
     if (!followUpType || !recipientFilter) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -29,7 +29,8 @@ export async function POST(
       additionalInstructions || "",
       customRecipientIds || [],
       masterSubject,
-      masterBody
+      masterBody,
+      includeMeetLink !== undefined ? includeMeetLink : true
     );
 
     return NextResponse.json({ success: true, campaignId: campaign.id });

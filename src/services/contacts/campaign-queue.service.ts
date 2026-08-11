@@ -34,12 +34,36 @@ export class CampaignQueueService {
       }
     });
 
+    let finalMeetLink = campaign.meetLink;
+
+    if (campaign.campaignType === "MEETING" && !campaign.parentCampaignId && !finalMeetLink) {
+      const eventStart = campaign.eventDate ? new Date(campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+      const durationMinutes = campaign.eventDuration || 30;
+      const eventEnd = new Date(eventStart.getTime() + durationMinutes * 60000);
+
+      try {
+        const calendarData = await CalendarService.createMeetingEvent(userId, {
+          summary: `Meeting: ${campaign.title}`,
+          description: campaign.description || "Campaign Meeting",
+          startTime: eventStart.toISOString(),
+          endTime: eventEnd.toISOString(),
+          attendeeEmails: [] // Do not natively invite everyone to avoid exposing emails
+        });
+        if (calendarData.meetLink) {
+          finalMeetLink = calendarData.meetLink;
+        }
+      } catch (e) {
+        console.error("Failed to generate shared Google Meet link for campaign", e);
+      }
+    }
+
     // Update campaign status
     const updated = await prisma.campaign.update({
       where: { id: campaignId },
       data: {
         status: sendAt ? CampaignStatus.SCHEDULED : CampaignStatus.SENDING,
-        scheduledAt: sendAt || null
+        scheduledAt: sendAt || null,
+        meetLink: finalMeetLink
       }
     });
 
@@ -133,28 +157,21 @@ export class CampaignQueueService {
                 let htmlBody = recipient.personalizedBody.replace(/\n/g, "<br>");
 
                 if (job.campaign.campaignType === "MEETING") {
-                  const eventStart = job.campaign.eventDate ? new Date(job.campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
-                  const durationMinutes = job.campaign.eventDuration || 30;
+                  let shouldAttach = true;
+                  if (job.campaign.parentCampaignId && !job.campaign.includeMeetLink) {
+                    shouldAttach = false; // User opted out of re-attaching the link for this follow-up
+                  }
 
-                  const eventEnd = new Date(eventStart.getTime() + durationMinutes * 60000);
-
-                  try {
-                    const calendarData = await CalendarService.createMeetingEvent(job.campaign.userId, {
-                      summary: `Meeting: ${job.campaign.title}`,
-                      description: recipient.personalizedSubject || "Meeting",
-                      startTime: eventStart.toISOString(),
-                      endTime: eventEnd.toISOString(),
-                      attendeeEmails: [recipient.contact.email]
-                    });
-                    if (calendarData.meetLink) {
-                      htmlBody += `<br><br><b>📅 Google Meet Link:</b> <a href="${calendarData.meetLink}">${calendarData.meetLink}</a>`;
-
-                      const timeString = eventStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                      const dateString = eventStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                      htmlBody += `<br><i>A calendar invite has also been sent to your email for ${dateString} at ${timeString}.</i>`;
-                    }
-                  } catch (e) {
-                    console.error("Failed to generate Google Meet link", e);
+                  const meetLinkToUse = job.campaign.meetLink;
+                  
+                  if (shouldAttach && meetLinkToUse) {
+                    const eventStart = job.campaign.eventDate ? new Date(job.campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+                    
+                    htmlBody += `<br><br><b>📅 Google Meet Link:</b> <a href="${meetLinkToUse}">${meetLinkToUse}</a>`;
+                    
+                    const timeString = eventStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    const dateString = eventStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    htmlBody += `<br><i>Looking forward to speaking with you on ${dateString} at ${timeString}.</i>`;
                   }
                 }
 

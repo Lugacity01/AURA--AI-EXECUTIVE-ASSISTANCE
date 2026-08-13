@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus } from "lucide-react";
+import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus, Pencil, RefreshCcw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -39,11 +39,18 @@ export default function CampaignDetailsPage() {
   const [useAiForNew, setUseAiForNew] = useState(true);
   const [isAddingRecipients, setIsAddingRecipients] = useState(false);
 
-  // Recipient Preview Modal State
   const [previewRecipient, setPreviewRecipient] = useState<any>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
   const [isSavingRecipient, setIsSavingRecipient] = useState(false);
+  const [recipientToRemove, setRecipientToRemove] = useState<string | null>(null);
+  const [isRemovingRecipient, setIsRemovingRecipient] = useState(false);
+
+  // Master Draft Editor State
+  const [isMasterDraftModalOpen, setIsMasterDraftModalOpen] = useState(false);
+  const [masterDraftText, setMasterDraftText] = useState("");
+  const [masterDraftUseAi, setMasterDraftUseAi] = useState(true);
+  const [isSavingMasterDraft, setIsSavingMasterDraft] = useState(false);
 
   // Stuck state tracking
   const lastProgressRef = useRef<number>(-1);
@@ -191,6 +198,34 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  const handleSaveMasterDraft = async () => {
+    if (!masterDraftText.trim()) return;
+    setIsSavingMasterDraft(true);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: masterDraftText,
+          useAi: masterDraftUseAi
+        })
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to regenerate campaign");
+      }
+      
+      showToast("Draft updated and regeneration started!");
+      setIsMasterDraftModalOpen(false);
+      fetchCampaignDetails();
+    } catch (err: any) {
+      showToast("Error updating draft: " + err.message);
+    } finally {
+      setIsSavingMasterDraft(false);
+    }
+  };
+
   const handleSendNow = async () => {
     setIsSending(true);
     setError("");
@@ -306,6 +341,25 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  const confirmRemoveRecipient = async () => {
+    if (!recipientToRemove) return;
+    setIsRemovingRecipient(true);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/recipients/${recipientToRemove}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to remove recipient");
+      showToast("Recipient removed.");
+      setRecipientToRemove(null);
+      fetchCampaignDetails();
+    } catch (err: any) {
+      setError(err.message);
+      showToast("Error removing recipient");
+    } finally {
+      setIsRemovingRecipient(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-full bg-[#0F0F12] items-center justify-center">
@@ -383,6 +437,17 @@ export default function CampaignDetailsPage() {
                 Retry Failed
               </button>
             )}
+            {(!campaign.recipients?.length || campaign.recipients.some((r: any) => r.sendStatus !== 'SENT')) && (
+              <button 
+                onClick={() => {
+                  setMasterDraftText(campaign?.template?.basePrompt || campaign?.description || "");
+                  setIsMasterDraftModalOpen(true);
+                }}
+                className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
+              >
+                <Pencil className="w-4 h-4 text-indigo-400" /> Edit Master Draft
+              </button>
+            )}
             <button 
               onClick={() => setIsAddModalOpen(true)}
               className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -411,6 +476,17 @@ export default function CampaignDetailsPage() {
         )}
         {campaign.status === 'READY' && (
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            {(!campaign.recipients?.length || campaign.recipients.some((r: any) => r.sendStatus !== 'SENT')) && (
+              <button 
+                onClick={() => {
+                  setMasterDraftText(campaign?.template?.basePrompt || campaign?.description || "");
+                  setIsMasterDraftModalOpen(true);
+                }}
+                className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
+              >
+                <Pencil className="w-4 h-4 text-indigo-400" /> Edit Master Draft
+              </button>
+            )}
             <button 
               onClick={() => setIsAddModalOpen(true)}
               className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -555,16 +631,27 @@ export default function CampaignDetailsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={() => {
-                              setPreviewRecipient(recipient);
-                              setEditSubject(recipient.personalizedSubject || "");
-                              setEditBody(recipient.personalizedBody || "");
-                            }}
-                            className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center justify-end gap-1 w-full"
-                          >
-                            Preview / Edit <ExternalLink className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center justify-end gap-4">
+                            {(recipient.sendStatus !== 'SENT' && recipient.sendStatus !== 'FAILED') && (
+                              <button 
+                                onClick={() => setRecipientToRemove(recipient.id)}
+                                className="text-red-400 hover:text-red-300 bg-red-500/10 p-2 rounded-lg transition flex items-center gap-1"
+                                title="Undo / Remove"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => {
+                                setPreviewRecipient(recipient);
+                                setEditSubject(recipient.personalizedSubject || "");
+                                setEditBody(recipient.personalizedBody || "");
+                              }}
+                              className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center gap-1"
+                            >
+                              Preview / Edit <ExternalLink className="w-3 h-3" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -587,16 +674,28 @@ export default function CampaignDetailsPage() {
                         <p className="text-white font-medium truncate">{recipient.contact?.name || "Unknown"}</p>
                         <p className="text-sm text-zinc-400 truncate">{recipient.contact?.email || recipient.contact?.phone}</p>
                       </div>
-                      <button 
-                        onClick={() => {
-                          setPreviewRecipient(recipient);
-                          setEditSubject(recipient.personalizedSubject || "");
-                          setEditBody(recipient.personalizedBody || "");
-                        }}
-                        className="text-indigo-400 bg-indigo-500/10 p-2 rounded-lg hover:bg-indigo-500/20 transition shrink-0 flex items-center gap-2 text-xs font-medium uppercase tracking-wider"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {(recipient.sendStatus !== 'SENT' && recipient.sendStatus !== 'FAILED') && (
+                          <button 
+                            onClick={() => setRecipientToRemove(recipient.id)}
+                            className="text-red-400 bg-red-500/10 p-2 rounded-lg hover:bg-red-500/20 transition flex items-center gap-2 text-xs font-medium uppercase tracking-wider"
+                            title="Undo / Remove"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => {
+                            setPreviewRecipient(recipient);
+                            setEditSubject(recipient.personalizedSubject || "");
+                            setEditBody(recipient.personalizedBody || "");
+                          }}
+                          className="text-indigo-400 bg-indigo-500/10 p-2 rounded-lg hover:bg-indigo-500/20 transition flex items-center gap-2 text-xs font-medium uppercase tracking-wider"
+                          title="Preview / Edit"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-2">
@@ -959,6 +1058,110 @@ export default function CampaignDetailsPage() {
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Master Draft Modal */}
+      {isMasterDraftModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsMasterDraftModalOpen(false)}></div>
+          <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl p-6 md:p-8 max-w-2xl w-full relative shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-xl font-medium text-white mb-2">Edit Master Draft</h2>
+            <p className="text-zinc-400 text-sm mb-6">
+              Update the base prompt/draft for this campaign. Saving will instantly regenerate all unsent emails (including those you have already approved). Sent emails will not be affected.
+            </p>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Master Draft / Base Prompt</label>
+                <textarea 
+                  value={masterDraftText}
+                  onChange={e => setMasterDraftText(e.target.value)}
+                  placeholder="Write your email draft or AI instructions here..."
+                  className="w-full h-64 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  id="masterUseAi"
+                  checked={masterDraftUseAi}
+                  onChange={(e) => setMasterDraftUseAi(e.target.checked)}
+                  className="w-5 h-5 rounded border-white/10 bg-black/50 text-indigo-500 focus:ring-indigo-500/50 focus:ring-offset-0 transition cursor-pointer"
+                />
+                <label htmlFor="masterUseAi" className="text-sm font-medium text-zinc-300 cursor-pointer">
+                  Use AI to deeply personalize each email based on recipient profile
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-8">
+              <button 
+                onClick={() => setIsMasterDraftModalOpen(false)}
+                disabled={isSavingMasterDraft}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveMasterDraft}
+                disabled={isSavingMasterDraft || !masterDraftText.trim()}
+                className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSavingMasterDraft ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw className="w-4 h-4" /> Save & Regenerate
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Recipient Confirmation Modal */}
+      {recipientToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl flex flex-col p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-6 h-6 text-red-500" />
+              </div>
+              <h2 className="text-lg font-medium text-white">Remove Recipient?</h2>
+            </div>
+            <p className="text-sm text-zinc-400 mb-6">
+              Are you sure you want to remove this recipient? This action cannot be undone, and they will not receive this campaign email.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button 
+                onClick={() => setRecipientToRemove(null)}
+                disabled={isRemovingRecipient}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmRemoveRecipient}
+                disabled={isRemovingRecipient}
+                className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {isRemovingRecipient ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  "Remove"
+                )}
+              </button>
             </div>
           </div>
         </div>

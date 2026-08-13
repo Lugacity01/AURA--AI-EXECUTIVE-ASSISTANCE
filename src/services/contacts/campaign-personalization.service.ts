@@ -58,11 +58,12 @@ export class CampaignPersonalizationService {
     // 2. Call the AI Pipeline via OpenAI
     const isWhatsApp = campaign.channel === "WHATSAPP";
     
-    const systemPrompt = `You are Aura, an elite Executive AI Assistant writing on behalf of the user. 
-Your goal is to write a highly personalized, professional message based on the Base Prompt and the Recipient's Profile Context.
-The message should sound human, warm, but incredibly sharp. Adopt the requested Tone.
+const systemPrompt = `You are Aura, an elite Executive AI Assistant writing on behalf of the user. 
+Your goal is to WRITE A COMPLETE, HIGHLY PERSONALIZED MESSAGE based on the Base Prompt and the Recipient's Profile Context.
+You MUST adopt the requested Tone. Do NOT just copy the Base Prompt verbatim—you MUST rewrite, polish, and adapt it to perfectly match the requested Tone.
 ${isWhatsApp ? "This message is for WhatsApp. Keep it conversational, short, and use emojis appropriately. Do NOT output a subject line." : ""}
-Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. Do not wrap in markdown or backticks.`;
+Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. Do not wrap in markdown or backticks.
+CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.`;
 
     const userPrompt = `
 Base Prompt:
@@ -70,7 +71,7 @@ ${personalizationContext.basePrompt || personalizationContext.campaignGoal}
 
 Recipient Profile Context:
 - Name: ${personalizationContext.recipientName}
-- Company: ${personalizationContext.company}
+- Company / Track: ${personalizationContext.company}
 - Job Title: ${personalizationContext.jobTitle}
 - Department: ${personalizationContext.department}
 - Previous Notes: ${personalizationContext.notes}
@@ -78,7 +79,8 @@ Recipient Profile Context:
 - Desired Tone: ${personalizationContext.preferredTone}
 
 CRITICAL INSTRUCTION 1: You MUST replace any placeholders like [Student's Name], [Name], or instructions like (Check individual from their company name as their track) with the actual corresponding data from the Recipient Profile Context. Do NOT output the raw brackets or instructions in the final message.
-CRITICAL INSTRUCTION 2: If the Base Prompt includes a signature or sign-off at the end (e.g. "Best, [Name] [Title]"), use their EXACT signature. Do not change it. If there is no signature in the prompt, sign off exactly as: ${personalizationContext.senderName}
+CRITICAL INSTRUCTION 2: If the Base Prompt leaves a blank space for a value (e.g., "Track: ", "Company: "), you MUST intelligently fill it in using the Recipient Profile Context. Never leave it blank!
+CRITICAL INSTRUCTION 3: Do NOT add a double signature. If the Base Prompt already includes a sign-off or signature at the bottom (e.g. "Best wishes, Company Name"), preserve it exactly and DO NOT append the sender's name. Only append ${personalizationContext.senderName} if there is absolutely no sign-off in the draft.
 
 Generate the JSON.`;
 
@@ -123,7 +125,9 @@ Generate the JSON.`;
       await prisma.campaignRecipient.updateMany({
         where: { 
           campaignId,
-          approvalStatus: { in: [CampaignRecipientStatus.GENERATED, CampaignRecipientStatus.FAILED] }
+          sendStatus: { not: 'SENT' }, // Reset anything that hasn't been sent yet
+          // Only reset if they aren't already pending
+          approvalStatus: { not: CampaignRecipientStatus.PENDING }
         },
         data: { approvalStatus: CampaignRecipientStatus.PENDING }
       });
@@ -136,7 +140,8 @@ Generate the JSON.`;
       include: { template: true }
     });
 
-    // 1. Fetch pending recipients
+    try {
+      // 1. Fetch pending recipients
     const pendingRecipients = await prisma.campaignRecipient.findMany({
       where: { campaignId, approvalStatus: CampaignRecipientStatus.PENDING },
       select: { id: true }
@@ -165,6 +170,7 @@ Generate the JSON.`;
               content: `You are Aura, an elite AI assistant. Write a polished, highly professional mass message based on the User's draft. 
                         Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. 
                         Do not wrap in markdown or backticks. 
+                        CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.
                         ${isWhatsApp ? "This is a WhatsApp broadcast. Keep paragraphs short and conversational. Include emojis where natural. No subject line." : ""}
                         CRITICAL INSTRUCTIONS:
                         1. Use '[Name]' as the placeholder for the recipient's name (e.g. "Hi [Name],").
@@ -225,10 +231,19 @@ Generate the JSON.`;
       }
     }));
 
-    // 3. Mark campaign as READY
-    await prisma.campaign.update({
-      where: { id: campaignId, userId },
-      data: { status: CampaignStatus.READY }
-    });
+      // 3. Mark campaign as READY
+      await prisma.campaign.update({
+        where: { id: campaignId, userId },
+        data: { status: CampaignStatus.READY }
+      });
+    } catch (fatalError) {
+      console.error("Fatal error during campaign generation:", fatalError);
+      
+      // If we crashed completely, fallback to DRAFT so the user isn't stuck
+      await prisma.campaign.update({
+        where: { id: campaignId, userId },
+        data: { status: CampaignStatus.DRAFT }
+      });
+    }
   }
 }

@@ -346,6 +346,7 @@ export default function ContactsPage() {
         return {
           name: getVal(["name", "full name", "contact name", "first name"]), // Note: 'first name' works if there's no full name
           email: getVal(["email", "e-mail", "email address"]),
+          phone: getVal(["phone", "phone number", "mobile", "cell", "contact number"]),
           company: getVal(["company", "organization", "org", "employer"]),
           jobTitle: getVal(["job title", "title", "role", "position"])
         };
@@ -357,12 +358,12 @@ export default function ContactsPage() {
         setImportNewGroupName("");
         setIsImportModalOpen(true);
       } else {
-        setAlertConfig({ isOpen: true, title: "Import Failed", message: "No valid contacts found. Make sure your file has 'Name' and 'Email' columns." });
+        showToast("Import Failed: No valid contacts found. Make sure your file has 'Name' and 'Email' columns.");
       }
 
     } catch (err) {
       console.error("Import error:", err);
-      setAlertConfig({ isOpen: true, title: "Import Error", message: "Failed to parse file. Ensure it is a valid CSV or Excel file." });
+      showToast("Import Error: Failed to parse file. Ensure it is a valid CSV or Excel file.");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
       setLoading(false);
@@ -401,10 +402,11 @@ export default function ContactsPage() {
       if (!res.ok) throw new Error("Failed to import contacts");
 
       setIsImportModalOpen(false);
+      showToast(`Successfully imported ${parsedImportContacts.length} contacts!`);
       fetchData();
     } catch (err: any) {
       console.error(err);
-      setAlertConfig({ isOpen: true, title: "Import Error", message: err.message || "Import failed" });
+      showToast(`Import Error: ${err.message || "Import failed"}`);
     } finally {
       setIsImportSubmitting(false);
     }

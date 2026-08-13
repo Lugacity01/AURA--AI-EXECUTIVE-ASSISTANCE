@@ -63,6 +63,29 @@ export async function DELETE(
       where: { id: recipientId },
     });
 
+    // Sync counts
+    const total = await prisma.campaignRecipient.count({ where: { campaignId } });
+    const pending = await prisma.campaignRecipient.count({ where: { campaignId, approvalStatus: "PENDING" } });
+
+    // Determine if we need to unstuck the campaign status
+    let newStatus = campaign.status;
+    if (campaign.status === "GENERATING") {
+      if (total === 0) {
+        newStatus = "DRAFT";
+      } else if (pending === 0) {
+        newStatus = "READY";
+      }
+    }
+
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        totalRecipients: total,
+        pendingRecipients: pending,
+        status: newStatus
+      }
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -36,6 +36,7 @@ export async function POST(request: Request) {
           name: contactData.name.trim(),
           company: contactData.company?.trim(),
           jobTitle: contactData.jobTitle?.trim(),
+          phone: contactData.phone?.trim(),
         },
         create: {
           userId: session.user.id,
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
           email: email,
           company: contactData.company?.trim(),
           jobTitle: contactData.jobTitle?.trim(),
+          phone: contactData.phone?.trim(),
         }
       });
 

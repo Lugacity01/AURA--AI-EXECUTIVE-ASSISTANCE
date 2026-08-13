@@ -23,7 +23,8 @@ export class CampaignService {
         recipients: {
           include: { contact: { include: { organization: true } } }
         },
-        attachments: true
+        attachments: true,
+        template: true
       }
     });
   }

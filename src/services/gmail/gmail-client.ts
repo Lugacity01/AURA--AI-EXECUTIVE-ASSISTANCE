@@ -1,6 +1,8 @@
+import MailComposer from "nodemailer/lib/mail-composer";
+
 export class GmailClient {
   /**
-   * Sends an email using the Gmail API by constructing an RFC 2822 payload.
+   * Sends an email using the Gmail API by constructing an RFC 2822 payload via nodemailer MailComposer.
    */
   static async sendEmail(
     accessToken: string, 
@@ -9,55 +11,30 @@ export class GmailClient {
     htmlBody: string, 
     attachments: { filename: string, mimeType: string, fileData: string }[] = []
   ) {
-    let emailLines: string[] = [];
+    const mailOptions: any = {
+      to,
+      subject,
+      html: htmlBody,
+    };
 
     if (attachments.length > 0) {
-      const boundary = `----=_Part_${Date.now().toString(16)}`;
-      
-      emailLines = [
-        `To: ${to}`,
-        `Subject: ${subject}`,
-        "MIME-Version: 1.0",
-        `Content-Type: multipart/mixed; boundary="${boundary}"`,
-        "",
-        `--${boundary}`,
-        "Content-Type: text/html; charset=utf-8",
-        "",
-        htmlBody,
-        ""
-      ];
-
-      for (const att of attachments) {
-        // fileData comes from the client as a data URL or raw base64. 
-        // We need to strip the prefix if it's a data URL (e.g. data:image/png;base64,....)
-        const base64Content = att.fileData.includes("base64,") ? att.fileData.split("base64,")[1] : att.fileData;
-
-        emailLines.push(`--${boundary}`);
-        emailLines.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
-        emailLines.push(`Content-Disposition: attachment; filename="${att.filename}"`);
-        emailLines.push("Content-Transfer-Encoding: base64");
-        emailLines.push("");
-        
-        // Chunk base64 string into 76 chars per line as per RFC
-        const chunks = base64Content.match(/.{1,76}/g) || [];
-        emailLines.push(...chunks);
-        emailLines.push("");
-      }
-
-      emailLines.push(`--${boundary}--`);
-    } else {
-      emailLines = [
-        `To: ${to}`,
-        `Subject: ${subject}`,
-        "Content-Type: text/html; charset=utf-8",
-        "MIME-Version: 1.0",
-        "",
-        htmlBody
-      ];
+      mailOptions.attachments = attachments.map(att => {
+        const base64Content = att.fileData.includes("base64,")
+          ? att.fileData.split("base64,")[1]
+          : att.fileData;
+        return {
+          filename: att.filename,
+          contentType: att.mimeType,
+          content: Buffer.from(base64Content, "base64")
+        };
+      });
     }
-    
-    // Create base64url encoded string
-    const rawEmail = Buffer.from(emailLines.join("\r\n"))
+
+    const composer = new MailComposer(mailOptions);
+    const messageBuffer = await composer.compile().build();
+
+    // Create base64url encoded string required by Gmail API
+    const rawEmail = messageBuffer
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")

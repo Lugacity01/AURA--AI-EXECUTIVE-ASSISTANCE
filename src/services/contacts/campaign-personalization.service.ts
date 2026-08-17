@@ -106,12 +106,52 @@ Generate the JSON.`;
       body = `Hi ${personalizationContext.recipientName},\n\n${personalizationContext.basePrompt}\n\nBest,`;
     }
 
+    // 2.5 Generate personalized PDF Content if PDF Attachment is enabled
+    let personalizedPdfContent: string | null = null;
+    if (campaign.pdfEnabled || campaign.pdfTemplate || campaign.pdfTitle) {
+      if (campaign.pdfContentSource === "EMAIL_BODY") {
+        personalizedPdfContent = body;
+      } else {
+        const rawPdfTemplate = campaign.pdfTemplate || campaign.pdfTitle || "Official Document Content";
+        let processedPdfTemplate = rawPdfTemplate
+          .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, personalizationContext.recipientName)
+          .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, personalizationContext.company)
+          .replace(/\[Job Title\]|\[Title\]/gi, personalizationContext.jobTitle)
+          .replace(/\[Department\]/gi, personalizationContext.department);
+
+        if (processedPdfTemplate) {
+          try {
+            const pdfResponse = await openai.chat.completions.create({
+              model: process.env.OPENAI_CHAT_MODEL || "gpt-4o",
+              messages: [
+                {
+                  role: "system",
+                  content: `You are Aura, an Executive Assistant formatting an official document. Personalize the PDF document text for the recipient. Return ONLY the plain text document content. Do not wrap in markdown or backticks.`
+                },
+                {
+                  role: "user",
+                  content: `Document Title: ${campaign.pdfTitle || "Official Notice"}\nDocument Template:\n${processedPdfTemplate}\n\nRecipient:\n- Name: ${personalizationContext.recipientName}\n- Company/Track: ${personalizationContext.company}`
+                }
+              ]
+            });
+            personalizedPdfContent = pdfResponse.choices[0].message.content?.trim() || processedPdfTemplate;
+          } catch (e) {
+            console.error("Failed to generate AI PDF content, fallback to template:", e);
+            personalizedPdfContent = processedPdfTemplate;
+          }
+        } else {
+          personalizedPdfContent = processedPdfTemplate;
+        }
+      }
+    }
+
     // 3. Save the deterministically generated draft and the context used
     return prisma.campaignRecipient.update({
       where: { id: recipientId },
       data: {
         personalizedSubject: subject,
         personalizedBody: body,
+        personalizedPdfContent: personalizedPdfContent,
         personalizationContext: JSON.stringify(personalizationContext),
         approvalStatus: CampaignRecipientStatus.GENERATED,
         generatedAt: new Date()
@@ -209,11 +249,27 @@ Generate the JSON.`;
             .replace(/\[Job Title\]|\[Title\]/gi, rec?.contact.jobTitle || "")
             .replace(/\[Department\]/gi, rec?.contact.department || "");
           
+          // Generate PDF content for Master Template mode if PDF is enabled
+          let personalizedPdfContent: string | null = null;
+          if (campaign.pdfEnabled || campaign.pdfTemplate || campaign.pdfTitle) {
+            if (campaign.pdfContentSource === "EMAIL_BODY") {
+              personalizedPdfContent = finalBody;
+            } else {
+              const rawPdfTemplate = campaign.pdfTemplate || campaign.pdfTitle || masterBody;
+              personalizedPdfContent = rawPdfTemplate
+                .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, rec?.contact.name || "there")
+                .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, company)
+                .replace(/\[Job Title\]|\[Title\]/gi, rec?.contact.jobTitle || "")
+                .replace(/\[Department\]/gi, rec?.contact.department || "");
+            }
+          }
+          
           await prisma.campaignRecipient.update({
             where: { id: recipient.id },
             data: {
               personalizedSubject: masterSubject,
               personalizedBody: finalBody,
+              personalizedPdfContent: personalizedPdfContent,
               approvalStatus: CampaignRecipientStatus.GENERATED,
               generatedAt: new Date()
             }

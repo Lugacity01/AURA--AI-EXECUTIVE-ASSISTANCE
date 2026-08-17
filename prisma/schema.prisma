@@ -74,6 +74,11 @@ enum FollowUpType {
   CUSTOM
 }
 
+enum PdfContentSource {
+  EMAIL_BODY
+  CUSTOM
+}
+
 enum ContactActivityType {
   EMAIL_SENT
   EMAIL_RECEIVED
@@ -518,6 +523,12 @@ model Campaign {
   meetLink           String?
   includeMeetLink    Boolean        @default(true)
   
+  // PDF Attachment Options
+  pdfEnabled         Boolean        @default(false)
+  pdfFilename        String         @default("Official_Notice.pdf")
+  pdfContentSource   PdfContentSource?
+  pdfTitle           String?
+  pdfTemplate        String?
   
   // Analytics Fields
   totalRecipients    Int            @default(0)
@@ -565,6 +576,7 @@ model CampaignRecipient {
   contact                Contact                 @relation(fields: [contactId], references: [id], onDelete: Cascade)
   personalizedSubject    String?
   personalizedBody       String?
+  personalizedPdfContent String?
   personalizationContext String?                 // JSON context used for AI generation
   approvalStatus         CampaignRecipientStatus @default(PENDING)
   sendStatus             CampaignRecipientStatus @default(PENDING)

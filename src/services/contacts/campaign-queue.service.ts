@@ -4,6 +4,7 @@ import { TokenManager } from "../gmail/token-manager";
 import { GmailClient } from "../gmail/gmail-client";
 import { CalendarService } from "../calendar/calendar.service";
 import { WhatsAppService } from "../whatsapp/whatsapp.service";
+import { PdfGeneratorService } from "../pdf/pdf-generator.service";
 
 export class CampaignQueueService {
   /**
@@ -175,13 +176,37 @@ export class CampaignQueueService {
                   }
                 }
 
+                // Dynamic PDF Attachment generation on the fly for this recipient
+                const recipientAttachments = [...attachments];
+                if (job.campaign.pdfEnabled || job.campaign.pdfTemplate || job.campaign.pdfTitle) {
+                  const pdfText = recipient.personalizedPdfContent || job.campaign.pdfTemplate || recipient.personalizedBody;
+                  if (pdfText) {
+                    try {
+                      const user = await prisma.user.findUnique({ where: { id: job.campaign.userId }, select: { name: true } });
+                      const pdfBuffer = await PdfGeneratorService.generatePdfBuffer({
+                        title: job.campaign.pdfTitle || "Official Notice",
+                        content: pdfText,
+                        organizationName: user?.name || "LUGACITY OPTIMAL SOLUTIONS"
+                      });
+
+                      recipientAttachments.push({
+                        filename: job.campaign.pdfFilename || "Official_Notice.pdf",
+                        mimeType: "application/pdf",
+                        fileData: pdfBuffer.toString("base64")
+                      });
+                    } catch (pdfErr) {
+                      console.error(`Failed to generate dynamic PDF for recipient ${recipient.id}:`, pdfErr);
+                    }
+                  }
+                }
+
                 // Attempt dispatch via Gmail API
                 await GmailClient.sendEmail(
                   accessToken,
                   recipient.contact.email,
                   recipient.personalizedSubject,
                   htmlBody,
-                  attachments
+                  recipientAttachments
                 );
 
                 await prisma.campaignRecipient.update({

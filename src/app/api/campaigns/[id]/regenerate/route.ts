@@ -14,7 +14,7 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { description, useAi = true } = body;
+    const { description, pdfTemplate, pdfTitle, pdfEnabled, pdfFilename, useAi = true } = body;
 
     if (!description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -29,10 +29,16 @@ export async function POST(
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    // Update the master draft/description
+    // Update the master draft/description & PDF fields
+    const updateData: any = { description: description };
+    if (pdfTemplate !== undefined) updateData.pdfTemplate = pdfTemplate;
+    if (pdfTitle !== undefined) updateData.pdfTitle = pdfTitle;
+    if (pdfEnabled !== undefined) updateData.pdfEnabled = pdfEnabled;
+    if (pdfFilename !== undefined) updateData.pdfFilename = pdfFilename;
+
     await prisma.campaign.update({
       where: { id },
-      data: { description: description }
+      data: updateData
     });
 
     if (campaign.templateId) {

@@ -24,13 +24,15 @@ export async function PUT(
     }
 
     // Update the recipient record
+    const updatePayload: any = {};
+    if (data.personalizedSubject !== undefined) updatePayload.personalizedSubject = data.personalizedSubject;
+    if (data.personalizedBody !== undefined) updatePayload.personalizedBody = data.personalizedBody;
+    if (data.personalizedPdfContent !== undefined) updatePayload.personalizedPdfContent = data.personalizedPdfContent;
+    if (data.approvalStatus !== undefined) updatePayload.approvalStatus = data.approvalStatus;
+
     const updatedRecipient = await prisma.campaignRecipient.update({
       where: { id: recipientId },
-      data: {
-        personalizedSubject: data.personalizedSubject,
-        personalizedBody: data.personalizedBody,
-        approvalStatus: data.approvalStatus,
-      },
+      data: updatePayload,
     });
 
     return NextResponse.json(updatedRecipient);

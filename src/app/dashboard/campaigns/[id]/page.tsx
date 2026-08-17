@@ -42,6 +42,7 @@ export default function CampaignDetailsPage() {
   const [previewRecipient, setPreviewRecipient] = useState<any>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [editPdfContent, setEditPdfContent] = useState("");
   const [isSavingRecipient, setIsSavingRecipient] = useState(false);
   const [recipientToRemove, setRecipientToRemove] = useState<string | null>(null);
   const [isRemovingRecipient, setIsRemovingRecipient] = useState(false);
@@ -49,6 +50,9 @@ export default function CampaignDetailsPage() {
   // Master Draft Editor State
   const [isMasterDraftModalOpen, setIsMasterDraftModalOpen] = useState(false);
   const [masterDraftText, setMasterDraftText] = useState("");
+  const [masterPdfEnabled, setMasterPdfEnabled] = useState(false);
+  const [masterPdfFilename, setMasterPdfFilename] = useState("Official_Notice.pdf");
+  const [masterPdfTemplate, setMasterPdfTemplate] = useState("");
   const [masterDraftUseAi, setMasterDraftUseAi] = useState(true);
   const [isSavingMasterDraft, setIsSavingMasterDraft] = useState(false);
 
@@ -105,17 +109,23 @@ export default function CampaignDetailsPage() {
         setFollowUps(followUpsData);
       }
       
-      const contactsRes = await fetch("/api/contacts?limit=100", { cache: 'no-store' });
-      if (contactsRes.ok) {
-        const cData = await contactsRes.json();
-        setContacts(cData.contacts || []);
+      if (contacts.length === 0) {
+        try {
+          const contactsRes = await fetch("/api/contacts?limit=100", { cache: 'no-store' });
+          if (contactsRes.ok) {
+            const cData = await contactsRes.json();
+            setContacts(cData.contacts || []);
+          }
+        } catch (cErr) {
+          // Ignore transient contact fetch network errors
+        }
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.warn("Campaign details fetch error:", err?.message || err);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, contacts.length]);
 
   useEffect(() => {
     fetchCampaignDetails();
@@ -207,6 +217,9 @@ export default function CampaignDetailsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: masterDraftText,
+          pdfEnabled: masterPdfEnabled,
+          pdfFilename: masterPdfFilename,
+          pdfTemplate: masterPdfTemplate,
           useAi: masterDraftUseAi
         })
       });
@@ -297,6 +310,7 @@ export default function CampaignDetailsPage() {
         body: JSON.stringify({
           personalizedSubject: editSubject,
           personalizedBody: editBody,
+          personalizedPdfContent: editPdfContent,
           approvalStatus: previewRecipient.approvalStatus,
         })
       });
@@ -441,6 +455,9 @@ export default function CampaignDetailsPage() {
               <button 
                 onClick={() => {
                   setMasterDraftText(campaign?.template?.basePrompt || campaign?.description || "");
+                  setMasterPdfEnabled(campaign?.pdfEnabled || false);
+                  setMasterPdfFilename(campaign?.pdfFilename || "Official_Notice.pdf");
+                  setMasterPdfTemplate(campaign?.pdfTemplate || "");
                   setIsMasterDraftModalOpen(true);
                 }}
                 className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -462,7 +479,7 @@ export default function CampaignDetailsPage() {
             </button>
           </div>
         )}
-        {campaign.status === 'SENDING' && (
+        {(campaign.status === 'SENDING' || campaign.status === 'FAILED') && (
           <div className="flex items-center gap-3 w-full md:w-auto">
             <button 
               onClick={handleForceResume}
@@ -472,6 +489,14 @@ export default function CampaignDetailsPage() {
               {isSending ? <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
               Force Resume
             </button>
+            <button 
+              onClick={handleSendNow}
+              disabled={isSending}
+              className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+            >
+              {isSending ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
+              {isSending ? "Starting..." : "Send Campaign Now"}
+            </button>
           </div>
         )}
         {campaign.status === 'READY' && (
@@ -480,6 +505,9 @@ export default function CampaignDetailsPage() {
               <button 
                 onClick={() => {
                   setMasterDraftText(campaign?.template?.basePrompt || campaign?.description || "");
+                  setMasterPdfEnabled(campaign?.pdfEnabled || false);
+                  setMasterPdfFilename(campaign?.pdfFilename || "Official_Notice.pdf");
+                  setMasterPdfTemplate(campaign?.pdfTemplate || "");
                   setIsMasterDraftModalOpen(true);
                 }}
                 className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -646,6 +674,7 @@ export default function CampaignDetailsPage() {
                                 setPreviewRecipient(recipient);
                                 setEditSubject(recipient.personalizedSubject || "");
                                 setEditBody(recipient.personalizedBody || "");
+                                setEditPdfContent(recipient.personalizedPdfContent || campaign?.pdfTemplate || campaign?.pdfTitle || recipient.personalizedBody || "");
                               }}
                               className="text-indigo-400 hover:text-indigo-300 transition text-xs font-medium uppercase tracking-wider flex items-center gap-1"
                             >
@@ -1032,6 +1061,29 @@ export default function CampaignDetailsPage() {
                   />
                 )}
               </div>
+
+              {(campaign?.pdfEnabled || campaign?.pdfTemplate || campaign?.pdfTitle || previewRecipient.personalizedPdfContent) && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>📄</span> Attached PDF Document Content ({campaign?.pdfFilename || "Official_Notice.pdf"})
+                    </label>
+                  </div>
+                  {previewRecipient.sendStatus === 'SENT' ? (
+                    <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl px-4 py-3 text-zinc-200 text-xs whitespace-pre-wrap min-h-[100px] font-sans">
+                      {previewRecipient.personalizedPdfContent || campaign?.pdfTemplate || "Standard PDF document attached"}
+                    </div>
+                  ) : (
+                    <textarea
+                      className="w-full bg-[#0F0F12] border border-indigo-500/30 rounded-lg px-4 py-3 text-white text-xs focus:outline-none focus:border-indigo-500 min-h-[120px] resize-y font-sans"
+                      value={editPdfContent}
+                      onChange={(e) => setEditPdfContent(e.target.value)}
+                      placeholder="Custom text to render inside the attached PDF file..."
+                    />
+                  )}
+                  <p className="text-[11px] text-zinc-500 mt-1">This text will be rendered into the PDF attachment and sent with the email.</p>
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
@@ -1075,13 +1127,56 @@ export default function CampaignDetailsPage() {
             
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Master Draft / Base Prompt</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Master Email Draft / Base Prompt</label>
                 <textarea 
                   value={masterDraftText}
                   onChange={e => setMasterDraftText(e.target.value)}
                   placeholder="Write your email draft or AI instructions here..."
-                  className="w-full h-64 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
+                  className="w-full h-48 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none text-sm"
                 />
+              </div>
+
+              <div className="pt-4 border-t border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📄</span>
+                    <div>
+                      <h4 className="text-sm font-medium text-white">Attach PDF Document</h4>
+                      <p className="text-xs text-zinc-400">Optionally attach a personalized PDF document to each email.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMasterPdfEnabled(!masterPdfEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${masterPdfEnabled ? 'bg-indigo-600' : 'bg-zinc-700'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${masterPdfEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                {masterPdfEnabled && (
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-300 mb-1">PDF Attachment Filename</label>
+                      <input 
+                        type="text"
+                        value={masterPdfFilename}
+                        onChange={e => setMasterPdfFilename(e.target.value)}
+                        placeholder="e.g. Official_Notice.pdf"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-indigo-400 mb-1">PDF Document Master Template</label>
+                      <textarea 
+                        value={masterPdfTemplate}
+                        onChange={e => setMasterPdfTemplate(e.target.value)}
+                        placeholder="Write your PDF document content template here..."
+                        className="w-full h-36 bg-black/50 border border-indigo-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none text-sm font-sans"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-3">

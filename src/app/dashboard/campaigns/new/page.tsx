@@ -28,6 +28,14 @@ export default function NewCampaignWizard() {
   const [generationMode, setGenerationMode] = useState<"ai" | "standard">("standard");
   const [recipientSearch, setRecipientSearch] = useState("");
 
+  // PDF Attachment State
+  const [pdfEnabled, setPdfEnabled] = useState(false);
+  const [pdfFilename, setPdfFilename] = useState("Official_Notice.pdf");
+  const [pdfContentSource, setPdfContentSource] = useState<"EMAIL_BODY" | "CUSTOM">("EMAIL_BODY");
+  const [pdfTitle, setPdfTitle] = useState("OFFICIAL SELECTION NOTICE");
+  const [pdfTemplate, setPdfTemplate] = useState("");
+  const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
+
   // Event State (For MEETING Campaigns)
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("14:00");
@@ -343,7 +351,14 @@ export default function NewCampaignWizard() {
       const res = await fetch(`/api/campaigns/${campaignId}/template`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ basePrompt })
+        body: JSON.stringify({
+          basePrompt,
+          pdfEnabled,
+          pdfFilename,
+          pdfContentSource,
+          pdfTitle,
+          pdfTemplate
+        })
       });
       if (!res.ok) throw new Error("Failed to save base prompt");
 
@@ -358,6 +373,22 @@ export default function NewCampaignWizard() {
   const handleStartGeneration = async (regenerate: boolean = false) => {
     setLoading(true);
     try {
+      // Always persist prompt & PDF settings before triggering AI generation
+      if (campaignId) {
+        await fetch(`/api/campaigns/${campaignId}/template`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            basePrompt,
+            pdfEnabled: pdfEnabled || Boolean(pdfTemplate || pdfTitle),
+            pdfFilename: pdfFilename || "Official_Notice.pdf",
+            pdfContentSource: pdfContentSource || "EMAIL_BODY",
+            pdfTitle: pdfTitle || "OFFICIAL DOCUMENTATION",
+            pdfTemplate: pdfTemplate || basePrompt
+          })
+        });
+      }
+
       const res = await fetch(`/api/campaigns/${campaignId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -403,6 +434,7 @@ export default function NewCampaignWizard() {
         body: JSON.stringify({
           personalizedSubject: editingDraft.personalizedSubject,
           personalizedBody: editingDraft.personalizedBody,
+          personalizedPdfContent: editingDraft.personalizedPdfContent,
           approvalStatus: "APPROVED"
         })
       });
@@ -813,6 +845,98 @@ export default function NewCampaignWizard() {
                   })()}
                 </div>
               </div>
+
+              {/* Attach a PDF Section */}
+              <div className="mt-8 bg-white/5 border border-white/10 p-6 rounded-xl space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-medium text-lg flex items-center gap-2">
+                      <span className="text-xl">📄</span> Attach a PDF Document
+                    </h3>
+                    <p className="text-sm text-zinc-400">Optionally generate and attach a personalized PDF file to each outgoing email.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPdfEnabled(!pdfEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${pdfEnabled ? "bg-indigo-600" : "bg-white/10"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${pdfEnabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                </div>
+
+                {pdfEnabled && (
+                  <div className="space-y-6 pt-4 border-t border-white/10 animate-in fade-in duration-300">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">PDF Filename</label>
+                      <input
+                        type="text"
+                        value={pdfFilename}
+                        onChange={(e) => setPdfFilename(e.target.value)}
+                        placeholder="Official_Notice.pdf"
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Document Source</label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div
+                          onClick={() => setPdfContentSource("EMAIL_BODY")}
+                          className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${pdfContentSource === "EMAIL_BODY" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
+                        >
+                          <div className="text-white font-medium text-sm">Use Email Content</div>
+                          <p className="text-xs text-zinc-400">Aura converts the personalized email message into the attached PDF file.</p>
+                        </div>
+                        <div
+                          onClick={() => setPdfContentSource("CUSTOM")}
+                          className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${pdfContentSource === "CUSTOM" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
+                        >
+                          <div className="text-white font-medium text-sm">Create Custom Document</div>
+                          <p className="text-xs text-zinc-400">Compose a separate document template with placeholders like [Name], [Company], [Job Title].</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {pdfContentSource === "CUSTOM" && (
+                      <div className="space-y-4 pt-2">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Document Title</label>
+                          <input
+                            type="text"
+                            value={pdfTitle}
+                            onChange={(e) => setPdfTitle(e.target.value)}
+                            placeholder="OFFICIAL SELECTION NOTICE"
+                            className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">PDF Document Composer</label>
+                            <span className="text-xs text-indigo-400 font-mono">Placeholders: [Name], [Company], [Job Title]</span>
+                          </div>
+                          <textarea
+                            value={pdfTemplate}
+                            onChange={(e) => setPdfTemplate(e.target.value)}
+                            className="w-full bg-black/50 border border-white/10 rounded-xl p-4 text-white min-h-[180px] text-sm focus:outline-none focus:border-indigo-500 transition resize-y font-sans"
+                            placeholder={"Dear [Name],\n\nWe are pleased to inform you that you have been selected for [Company].\n\nProgramme: [Company]\nStart Date: September 2, 2026\n\nCongratulations..."}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowPdfPreviewModal(true)}
+                        className="bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-medium px-4 py-2 rounded-lg transition flex items-center gap-2"
+                      >
+                        <span>👁️</span> Preview PDF Sample
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -965,7 +1089,8 @@ export default function NewCampaignWizard() {
                     <thead>
                       <tr className="border-b border-white/10 bg-white/5">
                         <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Recipient</th>
-                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Subject Line</th>
+                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Subject & Preview</th>
+                        <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">PDF Attachment</th>
                         <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
                         <th className="px-6 py-4 text-xs font-medium text-zinc-400 uppercase tracking-wider text-right">Actions</th>
                       </tr>
@@ -980,10 +1105,19 @@ export default function NewCampaignWizard() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex flex-col max-w-[250px] lg:max-w-[350px]">
+                            <div className="flex flex-col max-w-[200px] lg:max-w-[280px]">
                               <span className="text-sm text-zinc-300 truncate font-medium">{recipient.personalizedSubject || "No Subject"}</span>
                               <span className="text-xs text-zinc-500 truncate">{recipient.personalizedBody || "No Body"}</span>
                             </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {pdfEnabled || pdfTemplate || pdfTitle || recipient.personalizedPdfContent ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                                <span>📄</span> {pdfFilename || "Official_Notice.pdf"}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-zinc-600">None</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {recipient.approvalStatus === "APPROVED" ? (
@@ -1216,13 +1350,29 @@ export default function NewCampaignWizard() {
                 />
               </div>
 
-              <div className="flex flex-col gap-2 flex-1">
+              <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-zinc-400">Email Body</label>
                 <textarea
                   value={editingDraft.personalizedBody || ""}
                   onChange={e => setEditingDraft({ ...editingDraft, personalizedBody: e.target.value })}
-                  className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition flex-1 resize-none min-h-[300px]"
+                  className="bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition resize-y min-h-[160px]"
                 />
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-indigo-300 flex items-center gap-2">
+                    <span>📄</span> Attached PDF Document Content
+                  </label>
+                  <span className="text-xs text-zinc-500">Generates {pdfFilename || "Official_Notice.pdf"}</span>
+                </div>
+                <textarea
+                  value={editingDraft.personalizedPdfContent !== undefined && editingDraft.personalizedPdfContent !== null ? editingDraft.personalizedPdfContent : (pdfTemplate || pdfTitle || editingDraft.personalizedBody || "")}
+                  onChange={e => setEditingDraft({ ...editingDraft, personalizedPdfContent: e.target.value })}
+                  placeholder="Enter custom PDF text content for this recipient..."
+                  className="bg-black/50 border border-indigo-500/30 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition resize-y min-h-[180px]"
+                />
+                <p className="text-xs text-zinc-400">This content will be rendered into a PDF attachment and delivered to {editingDraft.contact?.email}.</p>
               </div>
             </div>
 
@@ -1270,6 +1420,65 @@ export default function NewCampaignWizard() {
                   Yes, delete it
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Sample Preview Modal */}
+      {showPdfPreviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPdfPreviewModal(false)}></div>
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-xl w-full relative shadow-2xl p-6 md:p-8 z-10">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-6">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📄</span>
+                <h3 className="text-white font-medium text-lg">PDF Attachment Preview</h3>
+              </div>
+              <button
+                onClick={() => setShowPdfPreviewModal(false)}
+                className="text-zinc-400 hover:text-white text-sm px-2 py-1 rounded hover:bg-white/10 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs text-zinc-400 mb-4 flex items-center justify-between">
+              <span>Attached File: <strong className="text-indigo-400">{pdfFilename || "Official_Notice.pdf"}</strong></span>
+              <span className="bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded font-mono">Sample Contact: Sarah Johnson</span>
+            </div>
+
+            {/* Rendered Document Container */}
+            <div className="bg-white text-zinc-900 rounded-xl p-6 shadow-xl font-sans min-h-[260px] border border-zinc-200 text-sm">
+              <div className="border-b border-zinc-200 pb-3 mb-4 flex items-center justify-between">
+                <span className="font-bold tracking-wider text-xs text-indigo-700 uppercase">LUGACITY OPTIMAL SOLUTIONS</span>
+                <span className="text-[10px] text-zinc-400 uppercase font-semibold">Official Document</span>
+              </div>
+
+              <h4 className="font-bold text-base text-zinc-900 mb-3">{pdfTitle || "OFFICIAL SELECTION NOTICE"}</h4>
+
+              <div className="whitespace-pre-wrap leading-relaxed text-zinc-800 text-xs">
+                {pdfContentSource === "EMAIL_BODY"
+                  ? (basePrompt
+                      ? basePrompt.replace(/\[Name\]/g, "Sarah Johnson").replace(/\[Company\]/g, "Frontend Development")
+                      : "Dear Sarah Johnson,\n\nWe are pleased to inform you that you have been selected for Frontend Development.\n\nCongratulations!")
+                  : (pdfTemplate
+                      ? pdfTemplate.replace(/\[Name\]/g, "Sarah Johnson").replace(/\[Company\]/g, "Frontend Development").replace(/\[Job Title\]/g, "Student")
+                      : "Dear Sarah Johnson,\n\nWe are pleased to inform you that you have been selected for Frontend Development.\n\nProgramme: Frontend Development\nStart Date: September 2, 2026\n\nCongratulations...")}
+              </div>
+
+              <div className="mt-8 pt-3 border-t border-zinc-200 text-[10px] text-zinc-400 text-center">
+                Issued on {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • Confidential & Proprietary
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowPdfPreviewModal(false)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium px-5 py-2 rounded-lg transition"
+              >
+                Close Preview
+              </button>
             </div>
           </div>
         </div>

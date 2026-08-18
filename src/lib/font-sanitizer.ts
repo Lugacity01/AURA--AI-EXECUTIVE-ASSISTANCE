@@ -1,20 +1,20 @@
 /**
- * Global Font Character & Browser Text Sanitizer Engine
- * Curbs raw unicode escape sequences, HTML entities, unprintable glyph boxes,
- * and font character rendering artifacts across the entire browser codebase.
+ * Global Font Character & Symbol Glyph Sanitizer Engine
+ * Curbs Wingdings, Webdings, Private Use Area (PUA) symbols (Apple logo, dingbats, wrenches, gift boxes),
+ * and raw unicode escape artifacts across the browser codebase.
  */
 
 /**
- * Cleans text specifically for Browser UI rendering (inputs, previews, textareas, cards).
- * Fixes literal unicode escapes (\u2019), HTML entities (&quot;, &rsquo;), zero-width characters,
- * and unprintable font glyph artifacts.
+ * Cleans text for Browser UI rendering.
+ * Strips Private Use Area (PUA) character ranges (\uE000-\uF8FF, \uF0000-\uFFFFF)
+ * that cause browsers to render text as random dingbat/symbol icons (Apple logo, wrenches, gift boxes, etc.).
  */
 export function cleanBrowserText(text: string | null | undefined): string {
   if (!text) return "";
 
   let cleaned = text;
 
-  // 1. Unescape literal raw Unicode escape strings returned by LLMs/APIs (e.g., "\\u2019" -> "’")
+  // 1. Unescape literal raw Unicode escape strings returned by LLMs/APIs (e.g., "\\uF8FF" or "\\u2019")
   cleaned = cleaned.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => {
     try {
       return String.fromCharCode(parseInt(hex, 16));
@@ -26,7 +26,7 @@ export function cleanBrowserText(text: string | null | undefined): string {
   // 2. Unescape literal escaped newlines ("\\n" -> "\n")
   cleaned = cleaned.replace(/\\n/g, "\n").replace(/\\r/g, "");
 
-  // 3. Decode common HTML entities that render as raw character text in React/DOM
+  // 3. Decode common HTML entities
   const htmlEntityMap: Record<string, string> = {
     "&quot;": '"',
     "&amp;": "&",
@@ -47,10 +47,13 @@ export function cleanBrowserText(text: string | null | undefined): string {
   cleaned = cleaned.replace(/&(quot|amp|#39|apos|lt|gt|nbsp|rsquo|lsquo|rdquo|ldquo|mdash|ndash|hellip);/gi, (match) => htmlEntityMap[match.toLowerCase()] || match);
   cleaned = cleaned.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
 
-  // 4. Unicode NFKC Normalization
+  // 4. STRIP PRIVATE USE AREA (PUA) CHARACTERS: \uE000-\uF8FF (Apple Logo, Wingdings, Dingbats, Icon Font Offsets)
+  cleaned = cleaned.replace(/[\uE000-\uF8FF\uDB80-\uDBFF\uDC00-\uDFFF]/g, "");
+
+  // 5. Unicode NFKC Normalization
   cleaned = cleaned.normalize("NFKC");
 
-  // 5. Remove Zero-Width Spaces, Soft Hyphens & Unprintable Control Glyphs that trigger missing font box icons in browsers
+  // 6. Remove Zero-Width Spaces & Unprintable Control Glyphs
   cleaned = cleaned.replace(/[\u200B-\u200D\uFEFF\u00AD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
 
   return cleaned;

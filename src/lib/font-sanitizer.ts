@@ -1,8 +1,43 @@
 /**
  * Global Font Character & Symbol Glyph Sanitizer Engine
  * Curbs Wingdings, Webdings, Private Use Area (PUA) symbols (Apple logo, dingbats, wrenches, gift boxes),
- * and raw unicode escape artifacts across the browser codebase.
+ * raw unicode escape artifacts, and replaces all contact placeholders ([Company], [Role], [Name], [Job Title]).
  */
+
+export interface ContactPlaceholderData {
+  name?: string | null;
+  email?: string | null;
+  company?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+}
+
+/**
+ * Universal Placeholder Replacement Engine
+ * Replaces placeholders like [Company], [Role], [Job Title], [Name], [Track], [Department], [Email]
+ * with contact profile data or clean fallback values.
+ */
+export function replaceContactPlaceholders(text: string | null | undefined, contact?: ContactPlaceholderData | null): string {
+  if (!text) return "";
+
+  const name = contact?.name || "there";
+  const company = contact?.company || contact?.jobTitle || "your organization";
+  const jobTitle = contact?.jobTitle || contact?.company || "Member";
+  const department = contact?.department || "Operations";
+  const email = contact?.email || "";
+
+  return text
+    // Replace Name placeholders
+    .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]|\[Recipient Name\]|\[First Name\]/gi, name)
+    // Replace Company & Track & Organization placeholders
+    .replace(/\[Company\]|\[Track\]|\[Company Name\]|\[Organization\]/gi, company)
+    // Replace Job Title & Role & Position placeholders
+    .replace(/\[Job Title\]|\[Title\]|\[Role\]|\[Position\]/gi, jobTitle)
+    // Replace Department placeholders
+    .replace(/\[Department\]|\[Team\]/gi, department)
+    // Replace Email placeholders
+    .replace(/\[Email\]|\[Email Address\]/gi, email);
+}
 
 /**
  * Cleans text for Browser UI rendering.

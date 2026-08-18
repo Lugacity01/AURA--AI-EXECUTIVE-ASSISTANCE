@@ -5,6 +5,7 @@ import { GmailClient } from "../gmail/gmail-client";
 import { CalendarService } from "../calendar/calendar.service";
 import { WhatsAppService } from "../whatsapp/whatsapp.service";
 import { PdfGeneratorService } from "../pdf/pdf-generator.service";
+import { replaceContactPlaceholders } from "@/lib/font-sanitizer";
 
 export class CampaignQueueService {
   /**
@@ -179,12 +180,13 @@ export class CampaignQueueService {
                 // Dynamic PDF Attachment generation on the fly for this recipient
                 const recipientAttachments = [...attachments];
                 if (job.campaign.pdfEnabled || job.campaign.pdfTemplate || job.campaign.pdfTitle) {
-                  const pdfText = recipient.personalizedPdfContent || job.campaign.pdfTemplate || recipient.personalizedBody;
-                  if (pdfText) {
+                  const rawPdfText = recipient.personalizedPdfContent || job.campaign.pdfTemplate || recipient.personalizedBody;
+                  if (rawPdfText) {
                     try {
+                      const pdfText = replaceContactPlaceholders(rawPdfText, recipient.contact);
                       const user = await prisma.user.findUnique({ where: { id: job.campaign.userId }, select: { name: true } });
                       const pdfBuffer = await PdfGeneratorService.generatePdfBuffer({
-                        title: job.campaign.pdfTitle || "Official Notice",
+                        title: replaceContactPlaceholders(job.campaign.pdfTitle || "", recipient.contact),
                         content: pdfText,
                         organizationName: user?.name || "LUGACITY OPTIMAL SOLUTIONS",
                         headerImage: job.campaign.pdfHeaderImage,

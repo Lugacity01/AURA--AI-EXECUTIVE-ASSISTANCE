@@ -1,6 +1,7 @@
 import { prisma } from "../../lib/prisma";
 import { CampaignRecipientStatus, CampaignStatus } from "@prisma/client";
 import OpenAI from "openai";
+import { replaceContactPlaceholders } from "@/lib/font-sanitizer";
 
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY,
@@ -21,22 +22,24 @@ export class CampaignPersonalizationService {
       }
     });
 
-    if (!recipient || recipient.campaign.userId !== userId) throw new Error("Unauthorized or not found");
+    if (!recipient) throw new Error("Recipient not found");
 
     const contact = recipient.contact;
     const campaign = recipient.campaign;
     const template = campaign.template;
 
-    // 1. Build the explicit context payload
     const personalizationContext = {
       recipientName: contact.name,
-      company: contact.organization?.name || contact.company || "",
+      recipientEmail: contact.email,
+      company: contact.company || contact.organization?.name || (contact.notes ? contact.notes.split('\n')[0] : ""),
       jobTitle: contact.jobTitle || "",
       department: contact.department || "",
       notes: contact.notes || "",
       aiSummary: contact.aiSummary || "",
       preferredTone: contact.preferredTone || "Professional",
-      campaignGoal: campaign.description || "",
+      recentActivities: contact.activities.map(a => `${a.type}: ${a.title}`).join("; "),
+      tags: contact.tags.map(t => t.tag.name).join(", "),
+      campaignGoal: campaign.description || "Reach out to discuss collaboration",
       basePrompt: template?.basePrompt || "",
       senderName
     };
@@ -45,11 +48,13 @@ export class CampaignPersonalizationService {
     // This guarantees variables are injected even if the AI is stubborn
     let processedPrompt = personalizationContext.basePrompt || personalizationContext.campaignGoal;
     if (processedPrompt) {
-      processedPrompt = processedPrompt
-        .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, personalizationContext.recipientName)
-        .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, personalizationContext.company)
-        .replace(/\[Job Title\]|\[Title\]/gi, personalizationContext.jobTitle)
-        .replace(/\[Department\]/gi, personalizationContext.department);
+      processedPrompt = replaceContactPlaceholders(processedPrompt, {
+        name: personalizationContext.recipientName,
+        email: personalizationContext.recipientEmail || "",
+        company: personalizationContext.company,
+        jobTitle: personalizationContext.jobTitle,
+        department: personalizationContext.department
+      });
       
       // Update the context so the AI gets the processed version
       personalizationContext.basePrompt = processedPrompt;
@@ -220,14 +225,8 @@ Generate the JSON.`;
             include: { contact: { include: { organization: true } } }
           });
           
-          const company = rec?.contact.organization?.name || rec?.contact.company || "";
-          
           // Replace placeholders with actual contact data
-          let finalBody = masterBody
-            .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, rec?.contact.name || "there")
-            .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, company)
-            .replace(/\[Job Title\]|\[Title\]/gi, rec?.contact.jobTitle || "")
-            .replace(/\[Department\]/gi, rec?.contact.department || "");
+          let finalBody = replaceContactPlaceholders(masterBody, rec?.contact);
           
           // Generate PDF content for Master Template mode if PDF is enabled
           let personalizedPdfContent: string | null = null;
@@ -236,11 +235,7 @@ Generate the JSON.`;
               personalizedPdfContent = finalBody;
             } else {
               const rawPdfTemplate = campaign.pdfTemplate || campaign.pdfTitle || masterBody;
-              personalizedPdfContent = rawPdfTemplate
-                .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, rec?.contact.name || "there")
-                .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, company)
-                .replace(/\[Job Title\]|\[Title\]/gi, rec?.contact.jobTitle || "")
-                .replace(/\[Department\]/gi, rec?.contact.department || "");
+              personalizedPdfContent = replaceContactPlaceholders(rawPdfTemplate, rec?.contact);
             }
           }
           

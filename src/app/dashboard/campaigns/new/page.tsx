@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Check, ChevronRight, Wand2, Loader2, ArrowLeft, X, Sparkles, Plus, Mail, Users, Filter, LayoutTemplate, Clock, Calendar as CalendarIcon, Upload, Trash2, MessageCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { cleanBrowserText, replaceContactPlaceholders } from "@/lib/font-sanitizer";
 
 export default function NewCampaignWizard() {
   const router = useRouter();
@@ -30,9 +31,9 @@ export default function NewCampaignWizard() {
 
   // PDF Attachment & A4 Letterhead Canvas State
   const [pdfEnabled, setPdfEnabled] = useState(false);
-  const [pdfFilename, setPdfFilename] = useState("Official_Notice.pdf");
+  const [pdfFilename, setPdfFilename] = useState("Attachment_Document.pdf");
   const [pdfContentSource, setPdfContentSource] = useState<"EMAIL_BODY" | "CUSTOM">("EMAIL_BODY");
-  const [pdfTitle, setPdfTitle] = useState("OFFICIAL SELECTION NOTICE");
+  const [pdfTitle, setPdfTitle] = useState("");
   const [pdfTemplate, setPdfTemplate] = useState("");
   const [pdfHeaderImage, setPdfHeaderImage] = useState<string | null>(null);
   const [pdfBackgroundFit, setPdfBackgroundFit] = useState<"A4" | "HEADER">("A4");
@@ -1148,7 +1149,7 @@ export default function NewCampaignWizard() {
                                 textAlign: pdfAlignment.toLowerCase() as any
                               }}
                             >
-                              <p className="font-bold text-zinc-900 mb-1">{pdfTitle || "OFFICIAL SELECTION NOTICE"}</p>
+                              {pdfTitle ? <p className="font-bold text-zinc-900 mb-1">{pdfTitle}</p> : null}
                               <div className="whitespace-pre-wrap">
                                 {pdfTemplate || basePrompt || "Dear John,\n\nWe are pleased to invite you to our upcoming cohort program. Please find your selection details enclosed in this document.\n\nBest regards,\nLUGACITY Team"}
                               </div>
@@ -1265,7 +1266,7 @@ export default function NewCampaignWizard() {
                             type="text"
                             value={pdfTitle}
                             onChange={(e) => setPdfTitle(e.target.value)}
-                            placeholder="OFFICIAL SELECTION NOTICE"
+                            placeholder="e.g. Executive Notification Letter"
                             className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
                           />
                         </div>
@@ -1842,10 +1843,18 @@ export default function NewCampaignWizard() {
                     }}
                   >
                     <div className="whitespace-pre-wrap font-sans">
-                      {(pdfContentSource === "EMAIL_BODY" ? basePrompt : (pdfTemplate || basePrompt || ""))
-                        .replace(/\[Name\]/gi, "Sarah Johnson")
-                        .replace(/\[Company\]|\[Track\]/gi, "Frontend Development")
-                        .replace(/\[Job Title\]/gi, "Student") || "Dear Sarah Johnson,\n\nOfficial document content will render inside this box."}
+                      {cleanBrowserText(
+                        replaceContactPlaceholders(
+                          pdfContentSource === "EMAIL_BODY" ? basePrompt : (pdfTemplate || basePrompt || ""),
+                          {
+                            name: "Sarah Johnson",
+                            company: "Frontend Development",
+                            jobTitle: "Cohort Student",
+                            department: "Engineering",
+                            email: "sarah@example.com"
+                          }
+                        )
+                      ) || "Dear Sarah Johnson,\n\nOfficial document content will render inside this box."}
                     </div>
                   </div>
                 </div>

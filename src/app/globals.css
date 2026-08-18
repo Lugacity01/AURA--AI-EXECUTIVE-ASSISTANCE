@@ -498,10 +498,10 @@ body {
 
 /* Workflow Section */
 .workflow-section {
-  padding: 128px 24px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 112px 0;
   width: 100%;
+  max-width: 100%;
+  margin: 0;
 }
 
 .section-header {
@@ -623,6 +623,10 @@ body {
   grid-column: span 1;
 }
 
+.bento-span-12 {
+  grid-column: span 1;
+}
+
 @media (min-width: 768px) {
   .bento-span-8 {
     grid-column: span 8;
@@ -630,6 +634,10 @@ body {
 
   .bento-span-4 {
     grid-column: span 4;
+  }
+
+  .bento-span-12 {
+    grid-column: span 12;
   }
 }
 
@@ -837,7 +845,7 @@ body {
 
 /* Custom background grid styling */
 .stack-container {
-  background-image: 
+  background-image:
     linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
   background-size: 50px 50px;
@@ -855,7 +863,15 @@ body {
 }
 
 /* Make sure header and sections sit above the grid layer */
-.nav-header, .hero-container, .demo-section, .stats-section, .workflow-section, .features-section, .security-section, .cta-section, .footer-section {
+.nav-header,
+.hero-container,
+.demo-section,
+.stats-section,
+.workflow-section,
+.features-section,
+.security-section,
+.cta-section,
+.footer-section {
   position: relative;
   z-index: 10;
 }

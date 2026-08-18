@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Check, ChevronRight, Wand2, Loader2, ArrowLeft, X, Sparkles, Plus, Mail, Users, Filter, LayoutTemplate, Clock, Calendar as CalendarIcon, Upload, Trash2, MessageCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { cleanBrowserText } from "@/lib/font-sanitizer";
 
 export default function NewCampaignWizard() {
   const router = useRouter();
@@ -1842,10 +1843,12 @@ export default function NewCampaignWizard() {
                     }}
                   >
                     <div className="whitespace-pre-wrap font-sans">
-                      {(pdfContentSource === "EMAIL_BODY" ? basePrompt : (pdfTemplate || basePrompt || ""))
-                        .replace(/\[Name\]/gi, "Sarah Johnson")
-                        .replace(/\[Company\]|\[Track\]/gi, "Frontend Development")
-                        .replace(/\[Job Title\]/gi, "Student") || "Dear Sarah Johnson,\n\nOfficial document content will render inside this box."}
+                      {cleanBrowserText(
+                        (pdfContentSource === "EMAIL_BODY" ? basePrompt : (pdfTemplate || basePrompt || ""))
+                          .replace(/\[Name\]/gi, "Sarah Johnson")
+                          .replace(/\[Company\]|\[Track\]/gi, "Frontend Development")
+                          .replace(/\[Job Title\]/gi, "Student")
+                      ) || "Dear Sarah Johnson,\n\nOfficial document content will render inside this box."}
                     </div>
                   </div>
                 </div>

@@ -115,7 +115,7 @@ Generate the JSON.`;
 
     // 2.5 Generate personalized PDF Content if PDF Attachment is enabled
     let personalizedPdfContent: string | null = null;
-    if (campaign.pdfEnabled || campaign.pdfTemplate || campaign.pdfTitle || campaign.pdfHeaderImage) {
+    if (Boolean(campaign.pdfEnabled)) {
       if (campaign.pdfContentSource === "EMAIL_BODY") {
         personalizedPdfContent = body;
       } else {
@@ -230,7 +230,7 @@ Generate the JSON.`;
           
           // Generate PDF content for Master Template mode if PDF is enabled
           let personalizedPdfContent: string | null = null;
-          if (campaign.pdfEnabled || campaign.pdfTemplate || campaign.pdfTitle) {
+          if (Boolean(campaign.pdfEnabled)) {
             if (campaign.pdfContentSource === "EMAIL_BODY") {
               personalizedPdfContent = finalBody;
             } else {

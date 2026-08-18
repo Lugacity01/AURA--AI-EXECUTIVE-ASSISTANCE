@@ -179,7 +179,7 @@ export class CampaignQueueService {
 
                 // Dynamic PDF Attachment generation on the fly for this recipient
                 const recipientAttachments = [...attachments];
-                if (job.campaign.pdfEnabled || job.campaign.pdfTemplate || job.campaign.pdfTitle) {
+                if (Boolean(job.campaign.pdfEnabled)) {
                   const rawPdfText = recipient.personalizedPdfContent || job.campaign.pdfTemplate || recipient.personalizedBody;
                   if (rawPdfText) {
                     try {

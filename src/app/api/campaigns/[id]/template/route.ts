@@ -39,7 +39,7 @@ export async function PUT(
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const isPdfEnabled = Boolean(pdfEnabled || pdfTemplate || pdfTitle || pdfHeaderImage);
+    const isPdfEnabled = Boolean(pdfEnabled);
 
     // Validate background fit
     const validFit = ["A4", "HEADER"].includes(pdfBackgroundFit) ? pdfBackgroundFit : "A4";

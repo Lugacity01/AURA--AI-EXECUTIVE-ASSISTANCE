@@ -421,7 +421,7 @@ export default function NewCampaignWizard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           basePrompt,
-          pdfEnabled: pdfEnabled || Boolean(pdfTemplate || pdfTitle || pdfHeaderImage),
+          pdfEnabled: Boolean(pdfEnabled),
           pdfFilename,
           pdfContentSource,
           pdfTitle,
@@ -457,10 +457,10 @@ export default function NewCampaignWizard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             basePrompt,
-            pdfEnabled: pdfEnabled || Boolean(pdfTemplate || pdfTitle || pdfHeaderImage),
-            pdfFilename: pdfFilename || "Official_Notice.pdf",
+            pdfEnabled: Boolean(pdfEnabled),
+            pdfFilename: pdfFilename || "Attachment_Document.pdf",
             pdfContentSource: pdfContentSource || "EMAIL_BODY",
-            pdfTitle: pdfTitle || "OFFICIAL DOCUMENTATION",
+            pdfTitle: pdfTitle || "",
             pdfTemplate: pdfTemplate || basePrompt,
             pdfHeaderImage,
             pdfBackgroundFit,
@@ -1122,7 +1122,6 @@ export default function NewCampaignWizard() {
                             <div className="absolute top-4 left-6 right-6 border-b border-zinc-200 pb-2 flex justify-between items-center text-zinc-900">
                               <div>
                                 <p className="font-bold text-indigo-600 uppercase text-[10px] tracking-wide">LUGACITY OPTIMAL SOLUTIONS</p>
-                                <p className="text-[8px] text-zinc-400 uppercase">Official Documentation</p>
                               </div>
                             </div>
                           )}
@@ -1462,9 +1461,9 @@ export default function NewCampaignWizard() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {pdfEnabled || pdfTemplate || pdfTitle || recipient.personalizedPdfContent ? (
+                            {pdfEnabled ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                                <span>📄</span> {pdfFilename || "Official_Notice.pdf"}
+                                <span>📄</span> {pdfFilename || "Attachment_Document.pdf"}
                               </span>
                             ) : (
                               <span className="text-xs text-zinc-600">None</span>

@@ -75,13 +75,17 @@ export class PdfGeneratorService {
             console.error("Failed to render background letterhead image in PDF:", imgErr);
             const orgName = (options.organizationName || "LUGACITY OPTIMAL SOLUTIONS").toUpperCase();
             doc.fillColor("#4F46E5").fontSize(14).font("Helvetica-Bold").text(orgName, 50, 45);
-            doc.fillColor("#6B7280").fontSize(9).font("Helvetica").text("OFFICIAL DOCUMENTATION", 50, 62);
+            if (options.title) {
+              doc.fillColor("#6B7280").fontSize(9).font("Helvetica").text(options.title.toUpperCase(), 50, 62);
+            }
             doc.moveTo(50, 78).lineTo(545, 78).strokeColor("#E5E7EB").lineWidth(1).stroke();
           }
         } else if (fitMode === "HEADER") {
           const orgName = (options.organizationName || "LUGACITY OPTIMAL SOLUTIONS").toUpperCase();
           doc.fillColor("#4F46E5").fontSize(14).font("Helvetica-Bold").text(orgName, 50, 45);
-          doc.fillColor("#6B7280").fontSize(9).font("Helvetica").text("OFFICIAL DOCUMENTATION", 50, 62);
+          if (options.title) {
+            doc.fillColor("#6B7280").fontSize(9).font("Helvetica").text(options.title.toUpperCase(), 50, 62);
+          }
           doc.moveTo(50, 78).lineTo(545, 78).strokeColor("#E5E7EB").lineWidth(1).stroke();
         }
 

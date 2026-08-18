@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus, Pencil, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus, Pencil, RefreshCcw, Upload } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
 export default function CampaignDetailsPage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
-  
+
   const [campaign, setCampaign] = useState<any>(null);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +21,7 @@ export default function CampaignDetailsPage() {
   const [instructions, setInstructions] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [includeMeetLink, setIncludeMeetLink] = useState(true);
-  
+
   // Preview State
   const [hasPreview, setHasPreview] = useState(false);
   const [previewSubject, setPreviewSubject] = useState("");
@@ -53,6 +53,15 @@ export default function CampaignDetailsPage() {
   const [masterPdfEnabled, setMasterPdfEnabled] = useState(false);
   const [masterPdfFilename, setMasterPdfFilename] = useState("Official_Notice.pdf");
   const [masterPdfTemplate, setMasterPdfTemplate] = useState("");
+  const [masterPdfHeaderImage, setMasterPdfHeaderImage] = useState<string | null>(null);
+  const [masterPdfBackgroundFit, setMasterPdfBackgroundFit] = useState<"A4" | "HEADER">("A4");
+  const [masterPdfContentX, setMasterPdfContentX] = useState<number>(70);
+  const [masterPdfContentY, setMasterPdfContentY] = useState<number>(180);
+  const [masterPdfContentWidth, setMasterPdfContentWidth] = useState<number>(455);
+  const [masterPdfContentHeight, setMasterPdfContentHeight] = useState<number>(550);
+  const [masterPdfFontSize, setMasterPdfFontSize] = useState<number>(11);
+  const [masterPdfLineHeight, setMasterPdfLineHeight] = useState<number>(1.4);
+  const [masterPdfAlignment, setMasterPdfAlignment] = useState<"LEFT" | "CENTER" | "RIGHT" | "JUSTIFY">("LEFT");
   const [masterDraftUseAi, setMasterDraftUseAi] = useState(true);
   const [isSavingMasterDraft, setIsSavingMasterDraft] = useState(false);
 
@@ -73,15 +82,15 @@ export default function CampaignDetailsPage() {
         fetch(`/api/campaigns/${id}?t=${timestamp}`, { cache: 'no-store' }),
         fetch(`/api/campaigns/${id}/follow-ups?t=${timestamp}`, { cache: 'no-store' })
       ]);
-      
+
       if (!campRes.ok) throw new Error("Failed to fetch campaign");
-      
+
       const data = await campRes.json();
-      
+
       // Check for stalled progress
       if (data.status === 'SENDING' && data.totalRecipients > 0) {
         const currentProgress = (data.emailsSent || 0) + (data.failedRecipients || 0);
-        
+
         if (lastProgressRef.current !== -1 && currentProgress === lastProgressRef.current && currentProgress < data.totalRecipients) {
           stuckCountRef.current += 1;
           // If stuck for ~20 seconds (10 polls of 2s each)
@@ -101,14 +110,14 @@ export default function CampaignDetailsPage() {
         stuckCountRef.current = 0;
         hasShownStuckToastRef.current = false;
       }
-      
+
       setCampaign(data);
 
       if (fupRes.ok) {
         const followUpsData = await fupRes.json();
         setFollowUps(followUpsData);
       }
-      
+
       if (contacts.length === 0) {
         try {
           const contactsRes = await fetch("/api/contacts?limit=100", { cache: 'no-store' });
@@ -199,7 +208,7 @@ export default function CampaignDetailsPage() {
       setInstructions("");
       setHasPreview(false);
       setIsGenerating(false);
-      
+
       // Refresh the timeline data to show the generating/scheduled follow-up
       fetchCampaignDetails();
     } catch (err: any) {
@@ -220,15 +229,24 @@ export default function CampaignDetailsPage() {
           pdfEnabled: masterPdfEnabled,
           pdfFilename: masterPdfFilename,
           pdfTemplate: masterPdfTemplate,
+          pdfHeaderImage: masterPdfHeaderImage,
+          pdfBackgroundFit: masterPdfBackgroundFit,
+          pdfContentX: masterPdfContentX,
+          pdfContentY: masterPdfContentY,
+          pdfContentWidth: masterPdfContentWidth,
+          pdfContentHeight: masterPdfContentHeight,
+          pdfFontSize: masterPdfFontSize,
+          pdfLineHeight: masterPdfLineHeight,
+          pdfAlignment: masterPdfAlignment,
           useAi: masterDraftUseAi
         })
       });
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to regenerate campaign");
       }
-      
+
       showToast("Draft updated and regeneration started!");
       setIsMasterDraftModalOpen(false);
       fetchCampaignDetails();
@@ -416,23 +434,22 @@ export default function CampaignDetailsPage() {
           <div>
             <h1 className="text-xl md:text-2xl font-medium text-white flex flex-wrap items-center gap-2 md:gap-3">
               {campaign.title}
-              <span className={`text-xs px-2.5 py-1 rounded-md uppercase tracking-wider font-semibold ${
-                campaign.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
-                campaign.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400' :
-                campaign.status === 'SENDING' ? 'bg-blue-500/10 text-blue-400 animate-pulse' :
-                'bg-blue-500/10 text-blue-400'
-              }`}>
-                {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ? 
-                  `SENDING (${Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100)}%)` 
+              <span className={`text-xs px-2.5 py-1 rounded-md uppercase tracking-wider font-semibold ${campaign.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
+                  campaign.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400' :
+                    campaign.status === 'SENDING' ? 'bg-blue-500/10 text-blue-400 animate-pulse' :
+                      'bg-blue-500/10 text-blue-400'
+                }`}>
+                {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ?
+                  `SENDING (${Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100)}%)`
                   : campaign.status}
               </span>
             </h1>
             <p className="text-sm text-zinc-400 mt-1">Created on {new Date(campaign.createdAt).toLocaleDateString()}</p>
           </div>
         </div>
-        
+
         {campaign.status === 'DRAFT' && (
-          <button 
+          <button
             onClick={() => router.push(`/dashboard/campaigns/new?id=${campaign.id}`)}
             className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center justify-center gap-2 w-full md:w-auto"
           >
@@ -442,7 +459,7 @@ export default function CampaignDetailsPage() {
         {campaign.status === 'COMPLETED' && (
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             {campaign.recipients?.some((r: any) => r.sendStatus === 'FAILED') && (
-              <button 
+              <button
                 onClick={handleRetryFailed}
                 disabled={isSending}
                 className="bg-red-500/10 text-red-400 border border-red-500/20 px-5 py-2 rounded-full text-sm font-medium hover:bg-red-500/20 transition flex items-center gap-2 shadow-lg shadow-red-500/10 disabled:opacity-50"
@@ -452,12 +469,21 @@ export default function CampaignDetailsPage() {
               </button>
             )}
             {(!campaign.recipients?.length || campaign.recipients.some((r: any) => r.sendStatus !== 'SENT')) && (
-              <button 
+              <button
                 onClick={() => {
                   setMasterDraftText(campaign?.template?.basePrompt || campaign?.description || "");
                   setMasterPdfEnabled(campaign?.pdfEnabled || false);
                   setMasterPdfFilename(campaign?.pdfFilename || "Official_Notice.pdf");
                   setMasterPdfTemplate(campaign?.pdfTemplate || "");
+                  setMasterPdfHeaderImage(campaign?.pdfHeaderImage || null);
+                  setMasterPdfBackgroundFit(campaign?.pdfBackgroundFit || "A4");
+                  setMasterPdfContentX(campaign?.pdfContentX ?? 70);
+                  setMasterPdfContentY(campaign?.pdfContentY ?? 180);
+                  setMasterPdfContentWidth(campaign?.pdfContentWidth ?? 455);
+                  setMasterPdfContentHeight(campaign?.pdfContentHeight ?? 550);
+                  setMasterPdfFontSize(campaign?.pdfFontSize ?? 11);
+                  setMasterPdfLineHeight(campaign?.pdfLineHeight ?? 1.4);
+                  setMasterPdfAlignment(campaign?.pdfAlignment || "LEFT");
                   setIsMasterDraftModalOpen(true);
                 }}
                 className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -465,13 +491,13 @@ export default function CampaignDetailsPage() {
                 <Pencil className="w-4 h-4 text-indigo-400" /> Edit Master Draft
               </button>
             )}
-            <button 
+            <button
               onClick={() => setIsAddModalOpen(true)}
               className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
             >
               <UserPlus className="w-4 h-4 text-emerald-400" /> Add Recipients
             </button>
-            <button 
+            <button
               onClick={() => setIsModalOpen(true)}
               className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
             >
@@ -481,7 +507,7 @@ export default function CampaignDetailsPage() {
         )}
         {(campaign.status === 'SENDING' || campaign.status === 'FAILED') && (
           <div className="flex items-center gap-3 w-full md:w-auto">
-            <button 
+            <button
               onClick={handleForceResume}
               disabled={isSending}
               className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-5 py-2 rounded-full text-sm font-medium hover:bg-amber-500/20 transition flex items-center gap-2 shadow-lg shadow-amber-500/10 disabled:opacity-50"
@@ -489,7 +515,7 @@ export default function CampaignDetailsPage() {
               {isSending ? <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" /> : <Play className="w-4 h-4" />}
               Force Resume
             </button>
-            <button 
+            <button
               onClick={handleSendNow}
               disabled={isSending}
               className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
@@ -502,12 +528,21 @@ export default function CampaignDetailsPage() {
         {campaign.status === 'READY' && (
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             {(!campaign.recipients?.length || campaign.recipients.some((r: any) => r.sendStatus !== 'SENT')) && (
-              <button 
+              <button
                 onClick={() => {
                   setMasterDraftText(campaign?.template?.basePrompt || campaign?.description || "");
                   setMasterPdfEnabled(campaign?.pdfEnabled || false);
                   setMasterPdfFilename(campaign?.pdfFilename || "Official_Notice.pdf");
                   setMasterPdfTemplate(campaign?.pdfTemplate || "");
+                  setMasterPdfHeaderImage(campaign?.pdfHeaderImage || null);
+                  setMasterPdfBackgroundFit(campaign?.pdfBackgroundFit || "A4");
+                  setMasterPdfContentX(campaign?.pdfContentX ?? 70);
+                  setMasterPdfContentY(campaign?.pdfContentY ?? 180);
+                  setMasterPdfContentWidth(campaign?.pdfContentWidth ?? 455);
+                  setMasterPdfContentHeight(campaign?.pdfContentHeight ?? 550);
+                  setMasterPdfFontSize(campaign?.pdfFontSize ?? 11);
+                  setMasterPdfLineHeight(campaign?.pdfLineHeight ?? 1.4);
+                  setMasterPdfAlignment(campaign?.pdfAlignment || "LEFT");
                   setIsMasterDraftModalOpen(true);
                 }}
                 className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -515,13 +550,13 @@ export default function CampaignDetailsPage() {
                 <Pencil className="w-4 h-4 text-indigo-400" /> Edit Master Draft
               </button>
             )}
-            <button 
+            <button
               onClick={() => setIsAddModalOpen(true)}
               className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
             >
               <UserPlus className="w-4 h-4 text-emerald-400" /> Add Recipients
             </button>
-            <button 
+            <button
               onClick={handleSendNow}
               disabled={isSending}
               className="bg-emerald-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
@@ -534,14 +569,14 @@ export default function CampaignDetailsPage() {
       </div>
 
       <div className="p-4 md:p-8 flex flex-col gap-8">
-        
+
         {/* Campaign Timeline */}
         {followUps.length > 0 && (
           <div>
             <h2 className="text-lg font-medium text-white mb-4">Campaign Timeline</h2>
             <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden p-6">
               <div className="flex flex-col gap-4">
-                
+
                 {/* Original Campaign */}
                 <div className="flex items-center gap-4">
                   <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
@@ -549,7 +584,7 @@ export default function CampaignDetailsPage() {
                   </div>
                   <div className="flex-1">
                     <h4 className="text-white font-medium flex items-center gap-2">
-                      Initial Campaign 
+                      Initial Campaign
                       <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded uppercase tracking-wider">Completed</span>
                     </h4>
                     <p className="text-sm text-zinc-400 mt-0.5">
@@ -563,7 +598,7 @@ export default function CampaignDetailsPage() {
                   <div key={fu.id} className="flex items-center gap-4 relative">
                     {/* Line connecting */}
                     <div className="absolute left-4 top-[-24px] bottom-6 w-px bg-white/10" />
-                    
+
                     <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 text-zinc-400 flex items-center justify-center shrink-0 z-10">
                       <ChevronRight className="w-4 h-4" />
                     </div>
@@ -571,11 +606,10 @@ export default function CampaignDetailsPage() {
                       <div>
                         <h4 className="text-white font-medium flex items-center gap-2">
                           {fu.title}
-                          <span className={`text-xs px-2 py-0.5 rounded uppercase tracking-wider ${
-                            fu.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
-                            fu.status === 'DRAFT' || fu.status === 'READY' ? 'bg-amber-500/10 text-amber-400' :
-                            'bg-blue-500/10 text-blue-400'
-                          }`}>{fu.status}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded uppercase tracking-wider ${fu.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
+                              fu.status === 'DRAFT' || fu.status === 'READY' ? 'bg-amber-500/10 text-amber-400' :
+                                'bg-blue-500/10 text-blue-400'
+                            }`}>{fu.status}</span>
                         </h4>
                         <p className="text-sm text-zinc-400 mt-0.5">
                           {fu.followUpType} • {fu.totalRecipients} recipients
@@ -641,27 +675,25 @@ export default function CampaignDetailsPage() {
                         <td className="px-6 py-4">{recipient.contact?.email || "-"}</td>
                         <td className="px-6 py-4">{recipient.contact?.phone || "-"}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-md text-xs ${
-                            recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :
-                            recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
-                            'bg-white/10 text-zinc-300'
-                          }`}>
+                          <span className={`px-2 py-1 rounded-md text-xs ${recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :
+                              recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
+                                'bg-white/10 text-zinc-300'
+                            }`}>
                             {recipient.approvalStatus}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-md text-xs ${
-                            recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400' :
-                            recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
-                            'bg-white/10 text-zinc-300'
-                          }`}>
+                          <span className={`px-2 py-1 rounded-md text-xs ${recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400' :
+                              recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                                'bg-white/10 text-zinc-300'
+                            }`}>
                             {recipient.sendStatus}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-4">
                             {(recipient.sendStatus !== 'SENT' && recipient.sendStatus !== 'FAILED') && (
-                              <button 
+                              <button
                                 onClick={() => setRecipientToRemove(recipient.id)}
                                 className="text-red-400 hover:text-red-300 bg-red-500/10 p-2 rounded-lg transition flex items-center gap-1"
                                 title="Undo / Remove"
@@ -669,7 +701,7 @@ export default function CampaignDetailsPage() {
                                 <X className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            <button 
+                            <button
                               onClick={() => {
                                 setPreviewRecipient(recipient);
                                 setEditSubject(recipient.personalizedSubject || "");
@@ -705,7 +737,7 @@ export default function CampaignDetailsPage() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {(recipient.sendStatus !== 'SENT' && recipient.sendStatus !== 'FAILED') && (
-                          <button 
+                          <button
                             onClick={() => setRecipientToRemove(recipient.id)}
                             className="text-red-400 bg-red-500/10 p-2 rounded-lg hover:bg-red-500/20 transition flex items-center gap-2 text-xs font-medium uppercase tracking-wider"
                             title="Undo / Remove"
@@ -713,7 +745,7 @@ export default function CampaignDetailsPage() {
                             <X className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button 
+                        <button
                           onClick={() => {
                             setPreviewRecipient(recipient);
                             setEditSubject(recipient.personalizedSubject || "");
@@ -726,20 +758,18 @@ export default function CampaignDetailsPage() {
                         </button>
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                        recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                        recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                        'bg-white/10 text-zinc-300 border border-white/10'
-                      }`}>
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                          recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                            'bg-white/10 text-zinc-300 border border-white/10'
+                        }`}>
                         {recipient.approvalStatus}
                       </span>
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                        recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
-                        recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                        'bg-white/10 text-zinc-400 border border-white/10'
-                      }`}>
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                          recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                            'bg-white/10 text-zinc-400 border border-white/10'
+                        }`}>
                         {recipient.sendStatus === 'SENT' ? 'Sent' : recipient.sendStatus === 'FAILED' ? 'Failed' : 'Queued'}
                       </span>
                     </div>
@@ -762,7 +792,7 @@ export default function CampaignDetailsPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 flex flex-col gap-6 overflow-y-auto">
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
@@ -778,11 +808,10 @@ export default function CampaignDetailsPage() {
                     <button
                       key={type}
                       onClick={() => { setFollowUpType(type); setHasPreview(false); }}
-                      className={`py-2 px-3 rounded-lg text-sm font-medium border transition ${
-                        followUpType === type 
-                          ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' 
+                      className={`py-2 px-3 rounded-lg text-sm font-medium border transition ${followUpType === type
+                          ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
                           : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
-                      }`}
+                        }`}
                     >
                       {type.replace('_', ' ')}
                     </button>
@@ -792,7 +821,7 @@ export default function CampaignDetailsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Recipients</label>
-                <select 
+                <select
                   className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
                   value={recipientFilter}
                   onChange={(e) => setRecipientFilter(e.target.value)}
@@ -802,7 +831,7 @@ export default function CampaignDetailsPage() {
                   {/* Custom selection would require a multi-select, keeping it simple for now */}
                 </select>
                 <p className="text-xs text-zinc-500 mt-2">
-                  {recipientFilter === 'PENDING_RESPONSE' 
+                  {recipientFilter === 'PENDING_RESPONSE'
                     ? "Only targets recipients who were sent the initial email but haven't replied."
                     : "Targets everyone from the original campaign."}
                 </p>
@@ -828,7 +857,7 @@ export default function CampaignDetailsPage() {
                 <div className="flex flex-col gap-4">
                   <div>
                     <label className="block text-sm font-medium text-zinc-300 mb-2">Generated Subject</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
                       value={previewSubject}
@@ -837,34 +866,34 @@ export default function CampaignDetailsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-zinc-300 mb-2">Generated Body</label>
-                    <textarea 
+                    <textarea
                       className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-48"
                       value={previewBody}
                       onChange={(e) => setPreviewBody(e.target.value)}
                     />
-                      <p className="text-xs text-zinc-500 mt-2">
-                        You can edit this draft before sending. Note that [Name] will be replaced dynamically.
+                    <p className="text-xs text-zinc-500 mt-2">
+                      You can edit this draft before sending. Note that [Name] will be replaced dynamically.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setIsIntelligentMode(!isIntelligentMode)}>
+                    <div className="pt-0.5">
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isIntelligentMode ? "bg-indigo-500 border-indigo-500" : "border-zinc-500"}`}>
+                        {isIntelligentMode && <CheckCircle2 className="w-3 h-3 text-white" />}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-white">AI Intelligent Follow-up Mode</h4>
+                      <p className="text-xs text-indigo-300/70 mt-1">
+                        If enabled, the text above is just a sample. The AI will write a completely unique follow-up for EVERY individual person by reading the specific email that was originally sent to them.
                       </p>
                     </div>
-
-                    <div className="mt-2 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setIsIntelligentMode(!isIntelligentMode)}>
-                      <div className="pt-0.5">
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isIntelligentMode ? "bg-indigo-500 border-indigo-500" : "border-zinc-500"}`}>
-                          {isIntelligentMode && <CheckCircle2 className="w-3 h-3 text-white" />}
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium text-white">AI Intelligent Follow-up Mode</h4>
-                        <p className="text-xs text-indigo-300/70 mt-1">
-                          If enabled, the text above is just a sample. The AI will write a completely unique follow-up for EVERY individual person by reading the specific email that was originally sent to them.
-                        </p>
-                      </div>
-                    </div>
                   </div>
+                </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-2">Additional AI Instructions</label>
-                  <textarea 
+                  <textarea
                     className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 resize-none h-32"
                     placeholder="e.g. Mention that seats are limited. Keep the tone friendly. Reference the previous invitation."
                     value={instructions}
@@ -875,16 +904,16 @@ export default function CampaignDetailsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => { setIsModalOpen(false); setHasPreview(false); }}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition"
                 disabled={isGenerating}
               >
                 Cancel
               </button>
-              
+
               {!hasPreview ? (
-                <button 
+                <button
                   onClick={handleGeneratePreview}
                   disabled={isGenerating}
                   className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -901,7 +930,7 @@ export default function CampaignDetailsPage() {
                   )}
                 </button>
               ) : (
-                <button 
+                <button
                   onClick={handleCreateFollowUp}
                   disabled={isGenerating}
                   className="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
@@ -935,7 +964,7 @@ export default function CampaignDetailsPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 flex flex-col gap-6 overflow-y-auto">
               <p className="text-sm text-zinc-400">
                 Adding new recipients to this campaign will generate emails for them and place the campaign back into the READY state. The email will <b>only</b> be sent to these new recipients.
@@ -953,8 +982,8 @@ export default function CampaignDetailsPage() {
                     <div className="divide-y divide-white/5">
                       {contacts.map(c => (
                         <label key={c.id} className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer transition">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             className="w-4 h-4 rounded border-zinc-700 bg-black/50 text-emerald-500 focus:ring-emerald-500/20"
                             checked={selectedContactIds.includes(c.id)}
                             onChange={(e) => {
@@ -990,15 +1019,15 @@ export default function CampaignDetailsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setIsAddModalOpen(false)}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition"
                 disabled={isAddingRecipients}
               >
                 Cancel
               </button>
-              
-              <button 
+
+              <button
                 onClick={handleAddRecipients}
                 disabled={isAddingRecipients || selectedContactIds.length === 0}
                 className="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
@@ -1029,7 +1058,7 @@ export default function CampaignDetailsPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[70vh]">
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Subject</label>
@@ -1046,7 +1075,7 @@ export default function CampaignDetailsPage() {
                   />
                 )}
               </div>
-              
+
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Body</label>
                 {previewRecipient.sendStatus === 'SENT' ? (
@@ -1087,15 +1116,15 @@ export default function CampaignDetailsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setPreviewRecipient(null)}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition border border-white/10"
               >
                 {previewRecipient.sendStatus === 'SENT' ? "Close" : "Cancel"}
               </button>
-              
+
               {previewRecipient.sendStatus !== 'SENT' && (
-                <button 
+                <button
                   onClick={handleSaveRecipient}
                   disabled={isSavingRecipient}
                   className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
@@ -1124,11 +1153,11 @@ export default function CampaignDetailsPage() {
             <p className="text-zinc-400 text-sm mb-6">
               Update the base prompt/draft for this campaign. Saving will instantly regenerate all unsent emails (including those you have already approved). Sent emails will not be affected.
             </p>
-            
+
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Master Email Draft / Base Prompt</label>
-                <textarea 
+                <textarea
                   value={masterDraftText}
                   onChange={e => setMasterDraftText(e.target.value)}
                   placeholder="Write your email draft or AI instructions here..."
@@ -1155,24 +1184,206 @@ export default function CampaignDetailsPage() {
                 </div>
 
                 {masterPdfEnabled && (
-                  <div className="space-y-4 pt-2">
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-300 mb-1">PDF Attachment Filename</label>
-                      <input 
-                        type="text"
-                        value={masterPdfFilename}
-                        onChange={e => setMasterPdfFilename(e.target.value)}
-                        placeholder="e.g. Official_Notice.pdf"
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                      />
+                  <div className="space-y-4 pt-2 border-t border-white/10">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-300 mb-1">PDF Filename</label>
+                        <input
+                          type="text"
+                          value={masterPdfFilename}
+                          onChange={e => setMasterPdfFilename(e.target.value)}
+                          placeholder="e.g. Official_Notice.pdf"
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-3.5 py-2 text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                        />
+                      </div>
+
+                      <div className="flex items-end justify-end">
+                        {masterPdfHeaderImage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textToFit = masterPdfTemplate || masterDraftText || "Sample content";
+                              const charCount = textToFit.length;
+                              let fontSize = 11;
+                              let lineHeight = 1.4;
+                              let contentY = 180;
+                              let contentHeight = 550;
+
+                              const avgCharsPerLine = Math.floor(masterPdfContentWidth / (fontSize * 0.55));
+                              const totalLines = Math.ceil(charCount / avgCharsPerLine) + (textToFit.split("\n").length - 1);
+                              const estimatedHeight = totalLines * (fontSize * lineHeight * 14);
+
+                              if (estimatedHeight > contentHeight) {
+                                if (fontSize > 10) { fontSize = 10; lineHeight = 1.3; }
+                                else if (fontSize > 9) { fontSize = 9.5; lineHeight = 1.25; }
+                                contentHeight = Math.min(620, contentHeight + 40);
+                              }
+                              setMasterPdfContentY(contentY);
+                              setMasterPdfContentHeight(contentHeight);
+                              setMasterPdfFontSize(fontSize);
+                              setMasterPdfLineHeight(lineHeight);
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-lg shadow-indigo-600/30"
+                          >
+                            <span>⚡</span> Auto Fit Content
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    {/* A4 Letterhead Upload Dropzone */}
+                    <div className="bg-black/30 border border-white/10 rounded-xl p-3.5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">🖼️ Upload Official A4 Letterhead</label>
+                      </div>
+
+                      {!masterPdfHeaderImage ? (
+                        <label className="border border-dashed border-white/20 hover:border-indigo-500/50 bg-black/30 hover:bg-indigo-500/5 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition">
+                          <Upload className="w-5 h-5 text-indigo-400 mb-1" />
+                          <span className="text-xs font-medium text-white">Upload A4 Letterhead Graphic (JPEG, PNG, WebP)</span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = (evt) => setMasterPdfHeaderImage(evt.target?.result as string);
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                      ) : (
+                        <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-lg border border-white/10">
+                          <div className="flex items-center gap-2.5">
+                            <img src={masterPdfHeaderImage} alt="Thumbnail" className="w-8 h-11 object-cover rounded border border-white/20" />
+                            <div>
+                              <p className="text-xs font-medium text-white">Letterhead Image Active</p>
+                              <p className="text-[10px] text-zinc-400">Full A4 Background Mode</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-[11px] bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded cursor-pointer transition">
+                              Replace
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onload = (evt) => setMasterPdfHeaderImage(evt.target?.result as string);
+                                  reader.readAsDataURL(file);
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setMasterPdfHeaderImage(null)}
+                              className="text-[11px] bg-red-500/10 hover:bg-red-500/20 text-red-400 px-2.5 py-1 rounded transition"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interactive A4 Visual Preview */}
+                    <div className="bg-black/40 border border-white/10 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                          <span>👁️</span> Live A4 Letterhead Canvas & Content Box Preview
+                        </label>
+                        <span className="text-[10px] text-zinc-400 font-mono">595 × 841 pt</span>
+                      </div>
+
+                      {/* Scaled A4 Preview */}
+                      <div className="flex justify-center bg-zinc-950 p-4 rounded-xl border border-white/10 overflow-hidden">
+                        <div
+                          className="relative bg-white shadow-xl rounded border border-zinc-300"
+                          style={{
+                            width: "280px",
+                            height: "396px", // 280 * 1.414
+                          }}
+                        >
+                          {masterPdfHeaderImage && (
+                            <img
+                              src={masterPdfHeaderImage}
+                              alt="Background"
+                              className="absolute inset-0 w-full h-full object-cover"
+                            />
+                          )}
+
+                          <div
+                            className="absolute border-2 border-dashed border-indigo-500 bg-indigo-500/10 rounded p-1.5 transition-all overflow-hidden"
+                            style={{
+                              left: `${(masterPdfContentX / 595.28) * 100}%`,
+                              top: `${(masterPdfContentY / 841.89) * 100}%`,
+                              width: `${(masterPdfContentWidth / 595.28) * 100}%`,
+                              height: `${(masterPdfContentHeight / 841.89) * 100}%`,
+                            }}
+                          >
+                            <div
+                              className="w-full h-full text-zinc-900 leading-normal"
+                              style={{
+                                fontSize: `${masterPdfFontSize * (280 / 595.28)}px`,
+                                lineHeight: masterPdfLineHeight,
+                                textAlign: masterPdfAlignment.toLowerCase() as any
+                              }}
+                            >
+                              <div className="whitespace-pre-wrap">
+                                {masterPdfTemplate || masterDraftText || "Dear Recipient,\n\nOfficial document content will render inside this box."}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Precision Controls */}
+                      <div className="grid grid-cols-3 gap-2 pt-2 text-[11px]">
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block mb-0.5">Top Y (pt)</span>
+                          <input
+                            type="number"
+                            value={masterPdfContentY}
+                            onChange={(e) => setMasterPdfContentY(parseInt(e.target.value) || 0)}
+                            className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block mb-0.5">Max Height (pt)</span>
+                          <input
+                            type="number"
+                            value={masterPdfContentHeight}
+                            onChange={(e) => setMasterPdfContentHeight(parseInt(e.target.value) || 100)}
+                            className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block mb-0.5">Font Size</span>
+                          <select
+                            value={masterPdfFontSize}
+                            onChange={(e) => setMasterPdfFontSize(parseInt(e.target.value))}
+                            className="w-full bg-black/50 border border-white/10 rounded px-1.5 py-1 text-white"
+                          >
+                            {[9, 10, 11, 12, 13, 14, 16].map(s => (
+                              <option key={s} value={s}>{s}pt</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-medium text-indigo-400 mb-1">PDF Document Master Template</label>
-                      <textarea 
+                      <textarea
                         value={masterPdfTemplate}
                         onChange={e => setMasterPdfTemplate(e.target.value)}
                         placeholder="Write your PDF document content template here..."
-                        className="w-full h-36 bg-black/50 border border-indigo-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none text-sm font-sans"
+                        className="w-full h-28 bg-black/50 border border-indigo-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none text-xs font-sans"
                       />
                     </div>
                   </div>
@@ -1180,8 +1391,8 @@ export default function CampaignDetailsPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="masterUseAi"
                   checked={masterDraftUseAi}
                   onChange={(e) => setMasterDraftUseAi(e.target.checked)}
@@ -1194,14 +1405,14 @@ export default function CampaignDetailsPage() {
             </div>
 
             <div className="flex items-center justify-end gap-3 mt-8">
-              <button 
+              <button
                 onClick={() => setIsMasterDraftModalOpen(false)}
                 disabled={isSavingMasterDraft}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleSaveMasterDraft}
                 disabled={isSavingMasterDraft || !masterDraftText.trim()}
                 className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-2"
@@ -1236,14 +1447,14 @@ export default function CampaignDetailsPage() {
               Are you sure you want to remove this recipient? This action cannot be undone, and they will not receive this campaign email.
             </p>
             <div className="flex items-center justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setRecipientToRemove(null)}
                 disabled={isRemovingRecipient}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={confirmRemoveRecipient}
                 disabled={isRemovingRecipient}
                 className="bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"

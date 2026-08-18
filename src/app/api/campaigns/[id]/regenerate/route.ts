@@ -14,7 +14,23 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { description, pdfTemplate, pdfTitle, pdfEnabled, pdfFilename, useAi = true } = body;
+    const {
+      description,
+      pdfTemplate,
+      pdfTitle,
+      pdfEnabled,
+      pdfFilename,
+      pdfHeaderImage,
+      pdfBackgroundFit,
+      pdfContentX,
+      pdfContentY,
+      pdfContentWidth,
+      pdfContentHeight,
+      pdfFontSize,
+      pdfLineHeight,
+      pdfAlignment,
+      useAi = true
+    } = body;
 
     if (!description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -35,6 +51,15 @@ export async function POST(
     if (pdfTitle !== undefined) updateData.pdfTitle = pdfTitle;
     if (pdfEnabled !== undefined) updateData.pdfEnabled = pdfEnabled;
     if (pdfFilename !== undefined) updateData.pdfFilename = pdfFilename;
+    if (pdfHeaderImage !== undefined) updateData.pdfHeaderImage = pdfHeaderImage;
+    if (pdfBackgroundFit !== undefined) updateData.pdfBackgroundFit = pdfBackgroundFit;
+    if (pdfContentX !== undefined) updateData.pdfContentX = pdfContentX;
+    if (pdfContentY !== undefined) updateData.pdfContentY = pdfContentY;
+    if (pdfContentWidth !== undefined) updateData.pdfContentWidth = pdfContentWidth;
+    if (pdfContentHeight !== undefined) updateData.pdfContentHeight = pdfContentHeight;
+    if (pdfFontSize !== undefined) updateData.pdfFontSize = pdfFontSize;
+    if (pdfLineHeight !== undefined) updateData.pdfLineHeight = pdfLineHeight;
+    if (pdfAlignment !== undefined) updateData.pdfAlignment = pdfAlignment;
 
     await prisma.campaign.update({
       where: { id },
@@ -54,8 +79,8 @@ export async function POST(
       console.error("Background AI regeneration failed:", err);
     });
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: "Campaign draft updated and regeneration started."
     });
   } catch (error: any) {

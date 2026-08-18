@@ -97,7 +97,9 @@ Generate the JSON.`;
         ]
       });
 
-      const parsed = JSON.parse(response.choices[0].message.content || "{}");
+      let rawContent = response.choices[0].message.content || "{}";
+      rawContent = rawContent.trim().replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
+      const parsed = JSON.parse(rawContent);
       if (parsed.subject) subject = parsed.subject;
       if (parsed.body) body = parsed.body;
     } catch (e) {
@@ -108,40 +110,16 @@ Generate the JSON.`;
 
     // 2.5 Generate personalized PDF Content if PDF Attachment is enabled
     let personalizedPdfContent: string | null = null;
-    if (campaign.pdfEnabled || campaign.pdfTemplate || campaign.pdfTitle) {
+    if (campaign.pdfEnabled || campaign.pdfTemplate || campaign.pdfTitle || campaign.pdfHeaderImage) {
       if (campaign.pdfContentSource === "EMAIL_BODY") {
         personalizedPdfContent = body;
       } else {
-        const rawPdfTemplate = campaign.pdfTemplate || campaign.pdfTitle || "Official Document Content";
-        let processedPdfTemplate = rawPdfTemplate
+        const rawPdfTemplate = campaign.pdfTemplate || campaign.pdfTitle || body;
+        personalizedPdfContent = rawPdfTemplate
           .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]/gi, personalizationContext.recipientName)
           .replace(/\[Company\]|\[Track\]|\[Company Name\]/gi, personalizationContext.company)
           .replace(/\[Job Title\]|\[Title\]/gi, personalizationContext.jobTitle)
           .replace(/\[Department\]/gi, personalizationContext.department);
-
-        if (processedPdfTemplate) {
-          try {
-            const pdfResponse = await openai.chat.completions.create({
-              model: process.env.OPENAI_CHAT_MODEL || "gpt-4o",
-              messages: [
-                {
-                  role: "system",
-                  content: `You are Aura, an Executive Assistant formatting an official document. Personalize the PDF document text for the recipient. Return ONLY the plain text document content. Do not wrap in markdown or backticks.`
-                },
-                {
-                  role: "user",
-                  content: `Document Title: ${campaign.pdfTitle || "Official Notice"}\nDocument Template:\n${processedPdfTemplate}\n\nRecipient:\n- Name: ${personalizationContext.recipientName}\n- Company/Track: ${personalizationContext.company}`
-                }
-              ]
-            });
-            personalizedPdfContent = pdfResponse.choices[0].message.content?.trim() || processedPdfTemplate;
-          } catch (e) {
-            console.error("Failed to generate AI PDF content, fallback to template:", e);
-            personalizedPdfContent = processedPdfTemplate;
-          }
-        } else {
-          personalizedPdfContent = processedPdfTemplate;
-        }
       }
     }
 
@@ -220,7 +198,9 @@ Generate the JSON.`;
           ]
         });
 
-        const parsed = JSON.parse(response.choices[0].message.content || "{}");
+        let rawMaster = response.choices[0].message.content || "{}";
+        rawMaster = rawMaster.trim().replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
+        const parsed = JSON.parse(rawMaster);
         if (parsed.subject) masterSubject = parsed.subject;
         if (parsed.body) masterBody = parsed.body;
       } catch (e) {

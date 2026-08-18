@@ -11,6 +11,7 @@ export default function CampaignsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -49,6 +50,7 @@ export default function CampaignsPage() {
 
   const executeDelete = async () => {
     if (!campaignToDelete) return;
+    setIsDeleting(true);
     try {
       const res = await fetch(`/api/campaigns/${campaignToDelete}`, { method: "DELETE" });
       if (res.ok) {
@@ -60,6 +62,7 @@ export default function CampaignsPage() {
     } catch (err) {
       console.error(err);
     } finally {
+      setIsDeleting(false);
       setDeleteModalOpen(false);
       setCampaignToDelete(null);
     }
@@ -238,15 +241,24 @@ export default function CampaignsPage() {
                   setDeleteModalOpen(false);
                   setCampaignToDelete(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-white hover:bg-white/10 rounded-full transition"
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/10 rounded-full transition disabled:opacity-50"
               >
                 Cancel
               </button>
               <button 
                 onClick={executeDelete}
-                className="bg-red-500/10 text-red-400 border border-red-500/20 px-4 py-2 rounded-full text-sm font-medium hover:bg-red-500/20 transition"
+                disabled={isDeleting}
+                className="bg-red-500/10 text-red-400 border border-red-500/20 px-5 py-2 rounded-full text-sm font-medium hover:bg-red-500/20 transition disabled:opacity-50 flex items-center gap-2"
               >
-                Delete Campaign
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  "Delete Campaign"
+                )}
               </button>
             </div>
           </div>

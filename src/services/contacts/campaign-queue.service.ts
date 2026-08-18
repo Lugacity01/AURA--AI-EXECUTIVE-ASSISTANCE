@@ -164,12 +164,12 @@ export class CampaignQueueService {
                   }
 
                   const meetLinkToUse = job.campaign.meetLink;
-                  
+
                   if (shouldAttach && meetLinkToUse) {
                     const eventStart = job.campaign.eventDate ? new Date(job.campaign.eventDate) : new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
-                    
+
                     htmlBody += `<br><br><b>📅 Google Meet Link:</b> <a href="${meetLinkToUse}">${meetLinkToUse}</a>`;
-                    
+
                     const timeString = eventStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                     const dateString = eventStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     htmlBody += `<br><i>Looking forward to speaking with you on ${dateString} at ${timeString}.</i>`;
@@ -186,7 +186,16 @@ export class CampaignQueueService {
                       const pdfBuffer = await PdfGeneratorService.generatePdfBuffer({
                         title: job.campaign.pdfTitle || "Official Notice",
                         content: pdfText,
-                        organizationName: user?.name || "LUGACITY OPTIMAL SOLUTIONS"
+                        organizationName: user?.name || "LUGACITY OPTIMAL SOLUTIONS",
+                        headerImage: job.campaign.pdfHeaderImage,
+                        backgroundFit: job.campaign.pdfBackgroundFit || "A4",
+                        contentX: job.campaign.pdfContentX,
+                        contentY: job.campaign.pdfContentY,
+                        contentWidth: job.campaign.pdfContentWidth,
+                        contentHeight: job.campaign.pdfContentHeight,
+                        fontSize: job.campaign.pdfFontSize,
+                        lineHeight: job.campaign.pdfLineHeight,
+                        alignment: job.campaign.pdfAlignment
                       });
 
                       recipientAttachments.push({

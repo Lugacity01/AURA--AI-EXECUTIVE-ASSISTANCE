@@ -530,6 +530,19 @@ model Campaign {
   pdfTitle           String?
   pdfTemplate        String?
   
+  // PDF Background Letterhead & Layout Options
+  pdfHeaderImage     String?        // A4 Full Page or Header Letterhead Background Image
+  pdfBackgroundFit   String?        @default("A4") // "A4" (full page cover), "HEADER" (top header)
+  
+  // Content Area Box Coordinates & Typography Options
+  pdfContentX        Int?           @default(70)   // Content area X offset (pt)
+  pdfContentY        Int?           @default(180)  // Content area Y offset (pt)
+  pdfContentWidth    Int?           @default(455)  // Content area width (pt)
+  pdfContentHeight   Int?           @default(550)  // Content area height before footer (pt)
+  pdfFontSize        Int?           @default(11)   // Font size in pt (9 to 18)
+  pdfLineHeight      Float?         @default(1.4)  // Line height multiplier (1.0 to 2.0)
+  pdfAlignment       String?        @default("LEFT") // "LEFT", "CENTER", "RIGHT", "JUSTIFY"
+  
   // Analytics Fields
   totalRecipients    Int            @default(0)
   pendingRecipients  Int            @default(0)

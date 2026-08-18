@@ -28,13 +28,80 @@ export default function NewCampaignWizard() {
   const [generationMode, setGenerationMode] = useState<"ai" | "standard">("standard");
   const [recipientSearch, setRecipientSearch] = useState("");
 
-  // PDF Attachment State
+  // PDF Attachment & A4 Letterhead Canvas State
   const [pdfEnabled, setPdfEnabled] = useState(false);
   const [pdfFilename, setPdfFilename] = useState("Official_Notice.pdf");
   const [pdfContentSource, setPdfContentSource] = useState<"EMAIL_BODY" | "CUSTOM">("EMAIL_BODY");
   const [pdfTitle, setPdfTitle] = useState("OFFICIAL SELECTION NOTICE");
   const [pdfTemplate, setPdfTemplate] = useState("");
+  const [pdfHeaderImage, setPdfHeaderImage] = useState<string | null>(null);
+  const [pdfBackgroundFit, setPdfBackgroundFit] = useState<"A4" | "HEADER">("A4");
+  const [pdfContentX, setPdfContentX] = useState<number>(70);
+  const [pdfContentY, setPdfContentY] = useState<number>(180);
+  const [pdfContentWidth, setPdfContentWidth] = useState<number>(455);
+  const [pdfContentHeight, setPdfContentHeight] = useState<number>(550);
+  const [pdfFontSize, setPdfFontSize] = useState<number>(11);
+  const [pdfLineHeight, setPdfLineHeight] = useState<number>(1.4);
+  const [pdfAlignment, setPdfAlignment] = useState<"LEFT" | "CENTER" | "RIGHT" | "JUSTIFY">("LEFT");
+  const [letterheadAspectRatio, setLetterheadAspectRatio] = useState<number | null>(null);
   const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
+
+  const handleLetterheadUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Please upload a valid JPEG, PNG, or WebP image.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setPdfHeaderImage(dataUrl);
+
+      // Detect Image Aspect Ratio (A4 ratio is 841.89 / 595.28 = 1.414)
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = () => {
+        const ratio = img.height / img.width;
+        setLetterheadAspectRatio(ratio);
+      };
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAutoFitContent = () => {
+    const textToFit = pdfTemplate || basePrompt || "Dear Recipient,\n\nOfficial document content will render inside this box.";
+    const charCount = textToFit.length;
+    let fontSize = 11;
+    let lineHeight = 1.4;
+    let contentY = 180;
+    let contentHeight = 550;
+
+    const avgCharsPerLine = Math.floor(pdfContentWidth / (fontSize * 0.55));
+    const totalLines = Math.ceil(charCount / avgCharsPerLine) + (textToFit.split("\n").length - 1);
+    const estimatedHeight = totalLines * (fontSize * lineHeight * 14);
+
+    if (estimatedHeight > contentHeight) {
+      if (fontSize > 10) {
+        fontSize = 10;
+        lineHeight = 1.3;
+      } else if (fontSize > 9) {
+        fontSize = 9.5;
+        lineHeight = 1.25;
+      }
+      contentHeight = Math.min(620, contentHeight + 40);
+    } else if (estimatedHeight < contentHeight * 0.4 && charCount < 300) {
+      fontSize = 12;
+      lineHeight = 1.45;
+    }
+
+    setPdfContentY(contentY);
+    setPdfContentHeight(contentHeight);
+    setPdfFontSize(fontSize);
+    setPdfLineHeight(lineHeight);
+  };
 
   // Event State (For MEETING Campaigns)
   const [eventDate, setEventDate] = useState("");
@@ -353,11 +420,20 @@ export default function NewCampaignWizard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           basePrompt,
-          pdfEnabled,
+          pdfEnabled: pdfEnabled || Boolean(pdfTemplate || pdfTitle || pdfHeaderImage),
           pdfFilename,
           pdfContentSource,
           pdfTitle,
-          pdfTemplate
+          pdfTemplate,
+          pdfHeaderImage,
+          pdfBackgroundFit,
+          pdfContentX,
+          pdfContentY,
+          pdfContentWidth,
+          pdfContentHeight,
+          pdfFontSize,
+          pdfLineHeight,
+          pdfAlignment
         })
       });
       if (!res.ok) throw new Error("Failed to save base prompt");
@@ -380,11 +456,20 @@ export default function NewCampaignWizard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             basePrompt,
-            pdfEnabled: pdfEnabled || Boolean(pdfTemplate || pdfTitle),
+            pdfEnabled: pdfEnabled || Boolean(pdfTemplate || pdfTitle || pdfHeaderImage),
             pdfFilename: pdfFilename || "Official_Notice.pdf",
             pdfContentSource: pdfContentSource || "EMAIL_BODY",
             pdfTitle: pdfTitle || "OFFICIAL DOCUMENTATION",
-            pdfTemplate: pdfTemplate || basePrompt
+            pdfTemplate: pdfTemplate || basePrompt,
+            pdfHeaderImage,
+            pdfBackgroundFit,
+            pdfContentX,
+            pdfContentY,
+            pdfContentWidth,
+            pdfContentHeight,
+            pdfFontSize,
+            pdfLineHeight,
+            pdfAlignment
           })
         });
       }
@@ -451,8 +536,11 @@ export default function NewCampaignWizard() {
     }
   };
 
+  const [isDeletingDraft, setIsDeletingDraft] = useState(false);
+
   const handleDeleteDraft = async () => {
     if (!deletingDraftId) return;
+    setIsDeletingDraft(true);
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/recipients/${deletingDraftId}`, {
         method: "DELETE"
@@ -465,6 +553,8 @@ export default function NewCampaignWizard() {
       setDeletingDraftId(null);
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setIsDeletingDraft(false);
     }
   };
 
@@ -511,7 +601,7 @@ export default function NewCampaignWizard() {
           </Link>
           <h1 className="text-xl md:text-2xl font-medium text-white">Campaign Builder</h1>
         </div>
-        
+
         {/* Mobile Step Indicator */}
         <div className="md:hidden flex items-center gap-2 text-sm">
           <span className="text-zinc-400">Step {step} of {steps.length}:</span>
@@ -810,13 +900,12 @@ export default function NewCampaignWizard() {
                     const isSingleContact = selectedContactIds.length === 1 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0;
                     return (
                       <>
-                        <div 
+                        <div
                           onClick={() => {
                             if (!isSingleContact) setGenerationMode("ai");
                           }}
-                          className={`p-4 rounded-xl border transition flex flex-col gap-2 ${
-                            isSingleContact ? "opacity-50 cursor-not-allowed bg-black/50 border-white/5" : "cursor-pointer " + (generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30")
-                          }`}
+                          className={`p-4 rounded-xl border transition flex flex-col gap-2 ${isSingleContact ? "opacity-50 cursor-not-allowed bg-black/50 border-white/5" : "cursor-pointer " + (generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30")
+                            }`}
                           title={isSingleContact ? "Deep AI Personalization is disabled when targeting only a single contact." : ""}
                         >
                           <div className="flex items-center gap-2 text-white font-medium">
@@ -827,8 +916,8 @@ export default function NewCampaignWizard() {
                             {isSingleContact ? "Disabled because you are only messaging 1 person." : "Aura will rewrite and personalize the base prompt specifically for each recipient using their profile data."}
                           </p>
                         </div>
-                        
-                        <div 
+
+                        <div
                           onClick={() => setGenerationMode("standard")}
                           className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "standard" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
                         >
@@ -866,33 +955,304 @@ export default function NewCampaignWizard() {
 
                 {pdfEnabled && (
                   <div className="space-y-6 pt-4 border-t border-white/10 animate-in fade-in duration-300">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">PDF Filename</label>
-                      <input
-                        type="text"
-                        value={pdfFilename}
-                        onChange={(e) => setPdfFilename(e.target.value)}
-                        placeholder="Official_Notice.pdf"
-                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">PDF Filename</label>
+                        <input
+                          type="text"
+                          value={pdfFilename}
+                          onChange={(e) => setPdfFilename(e.target.value)}
+                          placeholder="Official_Notice.pdf"
+                          className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Document Source</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPdfContentSource("EMAIL_BODY")}
+                            className={`p-2.5 rounded-lg border text-left transition ${pdfContentSource === "EMAIL_BODY" ? "border-indigo-500 bg-indigo-500/10 text-white" : "border-white/10 bg-black/30 text-zinc-400 hover:text-white"}`}
+                          >
+                            <div className="font-medium text-xs">Email Message</div>
+                            <div className="text-[10px] text-zinc-400">Convert body to PDF</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPdfContentSource("CUSTOM")}
+                            className={`p-2.5 rounded-lg border text-left transition ${pdfContentSource === "CUSTOM" ? "border-indigo-500 bg-indigo-500/10 text-white" : "border-white/10 bg-black/30 text-zinc-400 hover:text-white"}`}
+                          >
+                            <div className="font-medium text-xs">Custom Template</div>
+                            <div className="text-[10px] text-zinc-400">Use placeholders</div>
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Document Source</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div
-                          onClick={() => setPdfContentSource("EMAIL_BODY")}
-                          className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${pdfContentSource === "EMAIL_BODY" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
-                        >
-                          <div className="text-white font-medium text-sm">Use Email Content</div>
-                          <p className="text-xs text-zinc-400">Aura converts the personalized email message into the attached PDF file.</p>
+                    {/* Step 7: A4 Letterhead Upload Dropzone */}
+                    <div className="bg-black/40 border border-white/10 rounded-xl p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">🖼️ Upload Official A4 Letterhead</label>
+                          <p className="text-xs text-zinc-400 mt-0.5">Upload a full A4 sheet graphic containing your logo, header, address, and footer.</p>
                         </div>
+                        {pdfHeaderImage && (
+                          <button
+                            type="button"
+                            onClick={handleAutoFitContent}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/30"
+                          >
+                            <span>⚡</span> Auto Fit Content
+                          </button>
+                        )}
+                      </div>
+
+                      {!pdfHeaderImage ? (
+                        <label className="border-2 border-dashed border-white/20 hover:border-indigo-500/50 bg-black/30 hover:bg-indigo-500/5 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition">
+                          <Upload className="w-6 h-6 text-indigo-400 mb-2" />
+                          <span className="text-xs font-medium text-white">Upload A4 Letterhead Graphic (JPEG, PNG, WebP)</span>
+                          <span className="text-[10px] text-zinc-500 mt-1">Recommended size: A4 ratio (~210mm x 297mm or 1240x1754 px)</span>
+                          <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleLetterheadUpload} />
+                        </label>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
+                            <div className="flex items-center gap-3">
+                              <img src={pdfHeaderImage} alt="Letterhead Thumbnail" className="w-10 h-14 object-cover rounded border border-white/20" />
+                              <div>
+                                <p className="text-xs font-medium text-white">Official Letterhead Graphic Loaded</p>
+                                <p className="text-[10px] text-zinc-400">Mode: {pdfBackgroundFit === "A4" ? "Full A4 Page Cover" : "Top Header Banner"}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg cursor-pointer transition">
+                                Replace
+                                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleLetterheadUpload} />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => { setPdfHeaderImage(null); setLetterheadAspectRatio(null); }}
+                                className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg transition"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Aspect Ratio Check Warning */}
+                          {letterheadAspectRatio && (letterheadAspectRatio < 1.2 || letterheadAspectRatio > 1.6) && (
+                            <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg flex items-center justify-between text-xs text-amber-300">
+                              <span>⚠️ Uploaded image aspect ratio differs from standard A4 (1:1.414).</span>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setPdfBackgroundFit("A4")}
+                                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-2.5 py-1 rounded font-medium transition"
+                                >
+                                  Fit to A4
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPdfBackgroundFit("HEADER")}
+                                  className="bg-white/10 hover:bg-white/20 text-zinc-300 px-2.5 py-1 rounded transition"
+                                >
+                                  Keep Proportions
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Step 8 & 10: Interactive A4 Visual Canvas & Live Preview */}
+                    <div className="bg-black/50 border border-white/10 rounded-xl p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                          <span>👁️</span> Interactive A4 Letterhead Canvas & Content Box Editor
+                        </label>
+                        <span className="text-[11px] text-zinc-400 font-mono">A4 Canvas: 595pt × 841pt</span>
+                      </div>
+
+                      {/* Overflow Warning Badge */}
+                      {((pdfTemplate || basePrompt || "").length * (pdfFontSize * 0.55)) > (pdfContentWidth * (pdfContentHeight / (pdfFontSize * pdfLineHeight * 14))) && (
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-lg flex items-center justify-between text-xs text-red-300">
+                          <span>⚠️ Content exceeds the available letter area.</span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPdfFontSize(Math.max(9, pdfFontSize - 1))}
+                              className="bg-red-500/20 hover:bg-red-500/30 text-red-200 px-2.5 py-1 rounded font-medium transition"
+                            >
+                              Reduce Font Slightly
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPdfLineHeight(Math.max(1.0, parseFloat((pdfLineHeight - 0.1).toFixed(2))))}
+                              className="bg-white/10 hover:bg-white/20 text-zinc-300 px-2.5 py-1 rounded transition"
+                            >
+                              Reduce Spacing
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Scaled A4 Preview Container */}
+                      <div className="flex justify-center bg-zinc-950 p-6 rounded-xl border border-white/10 overflow-hidden">
                         <div
-                          onClick={() => setPdfContentSource("CUSTOM")}
-                          className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-1 ${pdfContentSource === "CUSTOM" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
+                          className="relative bg-white shadow-2xl rounded border border-zinc-300"
+                          style={{
+                            width: "380px",
+                            height: "537px", // 380 * 1.414 (A4 aspect ratio)
+                          }}
                         >
-                          <div className="text-white font-medium text-sm">Create Custom Document</div>
-                          <p className="text-xs text-zinc-400">Compose a separate document template with placeholders like [Name], [Company], [Job Title].</p>
+                          {/* Layer 1: Background Image */}
+                          {pdfHeaderImage ? (
+                            <img
+                              src={pdfHeaderImage}
+                              alt="A4 Letterhead Background"
+                              className="absolute inset-0 w-full h-full"
+                              style={{
+                                objectFit: pdfBackgroundFit === "A4" ? "cover" : "contain"
+                              }}
+                            />
+                          ) : (
+                            <div className="absolute top-4 left-6 right-6 border-b border-zinc-200 pb-2 flex justify-between items-center text-zinc-900">
+                              <div>
+                                <p className="font-bold text-indigo-600 uppercase text-[10px] tracking-wide">LUGACITY OPTIMAL SOLUTIONS</p>
+                                <p className="text-[8px] text-zinc-400 uppercase">Official Documentation</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Layer 2: Interactive Content Box Overlay */}
+                          <div
+                            className="absolute border-2 border-dashed border-indigo-500 bg-indigo-500/10 rounded p-2 transition-all cursor-move group"
+                            style={{
+                              left: `${(pdfContentX / 595.28) * 100}%`,
+                              top: `${(pdfContentY / 841.89) * 100}%`,
+                              width: `${(pdfContentWidth / 595.28) * 100}%`,
+                              height: `${(pdfContentHeight / 841.89) * 100}%`,
+                            }}
+                          >
+                            <div className="absolute -top-5 left-0 bg-indigo-600 text-white text-[9px] font-mono px-1.5 py-0.5 rounded shadow">
+                              Content Box ({pdfContentX}x, {pdfContentY}y)
+                            </div>
+
+                            <div
+                              className="w-full h-full overflow-hidden text-zinc-900 leading-normal"
+                              style={{
+                                fontSize: `${pdfFontSize * (380 / 595.28)}px`,
+                                lineHeight: pdfLineHeight,
+                                textAlign: pdfAlignment.toLowerCase() as any
+                              }}
+                            >
+                              <p className="font-bold text-zinc-900 mb-1">{pdfTitle || "OFFICIAL SELECTION NOTICE"}</p>
+                              <div className="whitespace-pre-wrap">
+                                {pdfTemplate || basePrompt || "Dear John,\n\nWe are pleased to invite you to our upcoming cohort program. Please find your selection details enclosed in this document.\n\nBest regards,\nLUGACITY Team"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 9: Precision Controls Panel */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-white/10 text-xs">
+                        {/* Position Inputs */}
+                        <div className="space-y-2">
+                          <label className="block font-semibold uppercase tracking-wider text-zinc-400">Position (Points)</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">X (Left Offset)</span>
+                              <input
+                                type="number"
+                                value={pdfContentX}
+                                onChange={(e) => setPdfContentX(parseInt(e.target.value) || 0)}
+                                className="w-full bg-black/50 border border-white/10 rounded px-2.5 py-1.5 text-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">Y (Top Offset)</span>
+                              <input
+                                type="number"
+                                value={pdfContentY}
+                                onChange={(e) => setPdfContentY(parseInt(e.target.value) || 0)}
+                                className="w-full bg-black/50 border border-white/10 rounded px-2.5 py-1.5 text-white font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Size Inputs */}
+                        <div className="space-y-2">
+                          <label className="block font-semibold uppercase tracking-wider text-zinc-400">Size (Points)</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">Width</span>
+                              <input
+                                type="number"
+                                value={pdfContentWidth}
+                                onChange={(e) => setPdfContentWidth(parseInt(e.target.value) || 100)}
+                                className="w-full bg-black/50 border border-white/10 rounded px-2.5 py-1.5 text-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">Height</span>
+                              <input
+                                type="number"
+                                value={pdfContentHeight}
+                                onChange={(e) => setPdfContentHeight(parseInt(e.target.value) || 100)}
+                                className="w-full bg-black/50 border border-white/10 rounded px-2.5 py-1.5 text-white font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Typography & Alignment */}
+                        <div className="space-y-2">
+                          <label className="block font-semibold uppercase tracking-wider text-zinc-400">Typography & Alignment</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">Font Size</span>
+                              <select
+                                value={pdfFontSize}
+                                onChange={(e) => setPdfFontSize(parseInt(e.target.value))}
+                                className="w-full bg-black/50 border border-white/10 rounded px-2 py-1.5 text-white"
+                              >
+                                {[9, 10, 11, 12, 13, 14, 16, 18].map(s => (
+                                  <option key={s} value={s}>{s}pt</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">Line Spacing</span>
+                              <select
+                                value={pdfLineHeight}
+                                onChange={(e) => setPdfLineHeight(parseFloat(e.target.value))}
+                                className="w-full bg-black/50 border border-white/10 rounded px-2 py-1.5 text-white"
+                              >
+                                {[1.0, 1.2, 1.3, 1.4, 1.5, 1.8, 2.0].map(h => (
+                                  <option key={h} value={h}>{h}x</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-zinc-500 block mb-1">Align</span>
+                              <div className="flex border border-white/10 rounded overflow-hidden">
+                                {["LEFT", "CENTER", "RIGHT", "JUSTIFY"].map((al) => (
+                                  <button
+                                    type="button"
+                                    key={al}
+                                    onClick={() => setPdfAlignment(al as any)}
+                                    className={`flex-1 py-1.5 text-[10px] font-bold ${pdfAlignment === al ? "bg-indigo-600 text-white" : "bg-black/30 text-zinc-400"}`}
+                                  >
+                                    {al[0]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -924,16 +1284,6 @@ export default function NewCampaignWizard() {
                         </div>
                       </div>
                     )}
-
-                    <div className="pt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setShowPdfPreviewModal(true)}
-                        className="bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-medium px-4 py-2 rounded-lg transition flex items-center gap-2"
-                      >
-                        <span>👁️</span> Preview PDF Sample
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
@@ -1170,8 +1520,8 @@ export default function NewCampaignWizard() {
                 <div
                   onClick={() => setScheduleType("immediate")}
                   className={`p-6 rounded-2xl border cursor-pointer transition flex flex-col gap-3 ${scheduleType === "immediate"
-                      ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
-                      : "bg-black/40 border-white/10 hover:bg-white/5"
+                    ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
+                    : "bg-black/40 border-white/10 hover:bg-white/5"
                     }`}
                 >
                   <div className="flex justify-between items-start">
@@ -1187,8 +1537,8 @@ export default function NewCampaignWizard() {
                 <div
                   onClick={() => setScheduleType("scheduled")}
                   className={`p-6 rounded-2xl border cursor-pointer transition flex flex-col gap-3 ${scheduleType === "scheduled"
-                      ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
-                      : "bg-black/40 border-white/10 hover:bg-white/5"
+                    ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.15)]"
+                    : "bg-black/40 border-white/10 hover:bg-white/5"
                     }`}
                 >
                   <div className="flex justify-between items-start">
@@ -1409,15 +1759,24 @@ export default function NewCampaignWizard() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setDeletingDraftId(null)}
-                  className="flex-1 bg-white/5 text-white px-4 py-2.5 rounded-full text-sm font-medium hover:bg-white/10 transition"
+                  disabled={isDeletingDraft}
+                  className="flex-1 bg-white/5 text-zinc-300 hover:text-white px-4 py-2.5 rounded-full text-sm font-medium hover:bg-white/10 transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleDeleteDraft}
-                  className="flex-1 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-4 py-2.5 rounded-full text-sm font-medium transition border border-red-500/20 hover:border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.15)] hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+                  disabled={isDeletingDraft}
+                  className="flex-1 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-4 py-2.5 rounded-full text-sm font-medium transition border border-red-500/20 hover:border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.15)] hover:shadow-[0_0_20px_rgba(239,68,68,0.4)] disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Yes, delete it
+                  {isDeletingDraft ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    "Yes, delete it"
+                  )}
                 </button>
               </div>
             </div>
@@ -1429,11 +1788,11 @@ export default function NewCampaignWizard() {
       {showPdfPreviewModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPdfPreviewModal(false)}></div>
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-xl w-full relative shadow-2xl p-6 md:p-8 z-10">
-            <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-6">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-lg w-full relative shadow-2xl p-6 z-10 flex flex-col items-center">
+            <div className="flex items-center justify-between w-full pb-3 border-b border-white/10 mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-xl">📄</span>
-                <h3 className="text-white font-medium text-lg">PDF Attachment Preview</h3>
+                <h3 className="text-white font-medium text-base">A4 PDF Letterhead Preview</h3>
               </div>
               <button
                 onClick={() => setShowPdfPreviewModal(false)}
@@ -1443,32 +1802,53 @@ export default function NewCampaignWizard() {
               </button>
             </div>
 
-            <div className="text-xs text-zinc-400 mb-4 flex items-center justify-between">
-              <span>Attached File: <strong className="text-indigo-400">{pdfFilename || "Official_Notice.pdf"}</strong></span>
-              <span className="bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded font-mono">Sample Contact: Sarah Johnson</span>
+            <div className="text-xs text-zinc-400 mb-3 flex items-center justify-between w-full">
+              <span>Attached: <strong className="text-indigo-400">{pdfFilename || "Official_Notice.pdf"}</strong></span>
+              <span className="bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded font-mono text-[10px]">Sample Contact: Sarah Johnson</span>
             </div>
 
-            {/* Rendered Document Container */}
-            <div className="bg-white text-zinc-900 rounded-xl p-6 shadow-xl font-sans min-h-[260px] border border-zinc-200 text-sm">
-              <div className="border-b border-zinc-200 pb-3 mb-4 flex items-center justify-between">
-                <span className="font-bold tracking-wider text-xs text-indigo-700 uppercase">LUGACITY OPTIMAL SOLUTIONS</span>
-                <span className="text-[10px] text-zinc-400 uppercase font-semibold">Official Document</span>
-              </div>
+            {/* Scaled A4 Letterhead Rendered Container */}
+            <div className="flex justify-center bg-zinc-950 p-3 rounded-xl border border-white/10 overflow-hidden w-full">
+              <div
+                className="relative bg-white shadow-2xl rounded border border-zinc-300 overflow-hidden"
+                style={{
+                  width: "320px",
+                  height: "452px", // 320 * 1.414 (A4 ratio)
+                }}
+              >
+                {pdfHeaderImage && (
+                  <img
+                    src={pdfHeaderImage}
+                    alt="Letterhead Background"
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                )}
 
-              <h4 className="font-bold text-base text-zinc-900 mb-3">{pdfTitle || "OFFICIAL SELECTION NOTICE"}</h4>
-
-              <div className="whitespace-pre-wrap leading-relaxed text-zinc-800 text-xs">
-                {pdfContentSource === "EMAIL_BODY"
-                  ? (basePrompt
-                      ? basePrompt.replace(/\[Name\]/g, "Sarah Johnson").replace(/\[Company\]/g, "Frontend Development")
-                      : "Dear Sarah Johnson,\n\nWe are pleased to inform you that you have been selected for Frontend Development.\n\nCongratulations!")
-                  : (pdfTemplate
-                      ? pdfTemplate.replace(/\[Name\]/g, "Sarah Johnson").replace(/\[Company\]/g, "Frontend Development").replace(/\[Job Title\]/g, "Student")
-                      : "Dear Sarah Johnson,\n\nWe are pleased to inform you that you have been selected for Frontend Development.\n\nProgramme: Frontend Development\nStart Date: September 2, 2026\n\nCongratulations...")}
-              </div>
-
-              <div className="mt-8 pt-3 border-t border-zinc-200 text-[10px] text-zinc-400 text-center">
-                Issued on {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} • Confidential & Proprietary
+                <div
+                  className="absolute p-2 overflow-hidden"
+                  style={{
+                    left: `${(pdfContentX / 595.28) * 100}%`,
+                    top: `${(pdfContentY / 841.89) * 100}%`,
+                    width: `${(pdfContentWidth / 595.28) * 100}%`,
+                    height: `${(pdfContentHeight / 841.89) * 100}%`,
+                  }}
+                >
+                  <div
+                    className="w-full h-full text-zinc-900 leading-normal"
+                    style={{
+                      fontSize: `${pdfFontSize * (320 / 595.28)}px`,
+                      lineHeight: pdfLineHeight,
+                      textAlign: pdfAlignment.toLowerCase() as any
+                    }}
+                  >
+                    <div className="whitespace-pre-wrap font-sans">
+                      {(pdfContentSource === "EMAIL_BODY" ? basePrompt : (pdfTemplate || basePrompt || ""))
+                        .replace(/\[Name\]/gi, "Sarah Johnson")
+                        .replace(/\[Company\]|\[Track\]/gi, "Frontend Development")
+                        .replace(/\[Job Title\]/gi, "Student") || "Dear Sarah Johnson,\n\nOfficial document content will render inside this box."}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

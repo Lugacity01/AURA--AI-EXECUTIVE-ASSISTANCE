@@ -435,9 +435,9 @@ export default function CampaignDetailsPage() {
             <h1 className="text-xl md:text-2xl font-medium text-white flex flex-wrap items-center gap-2 md:gap-3">
               {campaign.title}
               <span className={`text-xs px-2.5 py-1 rounded-md uppercase tracking-wider font-semibold ${campaign.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
-                  campaign.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400' :
-                    campaign.status === 'SENDING' ? 'bg-blue-500/10 text-blue-400 animate-pulse' :
-                      'bg-blue-500/10 text-blue-400'
+                campaign.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400' :
+                  campaign.status === 'SENDING' ? 'bg-blue-500/10 text-blue-400 animate-pulse' :
+                    'bg-blue-500/10 text-blue-400'
                 }`}>
                 {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ?
                   `SENDING (${Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100)}%)`
@@ -607,8 +607,8 @@ export default function CampaignDetailsPage() {
                         <h4 className="text-white font-medium flex items-center gap-2">
                           {fu.title}
                           <span className={`text-xs px-2 py-0.5 rounded uppercase tracking-wider ${fu.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
-                              fu.status === 'DRAFT' || fu.status === 'READY' ? 'bg-amber-500/10 text-amber-400' :
-                                'bg-blue-500/10 text-blue-400'
+                            fu.status === 'DRAFT' || fu.status === 'READY' ? 'bg-amber-500/10 text-amber-400' :
+                              'bg-blue-500/10 text-blue-400'
                             }`}>{fu.status}</span>
                         </h4>
                         <p className="text-sm text-zinc-400 mt-0.5">
@@ -676,16 +676,16 @@ export default function CampaignDetailsPage() {
                         <td className="px-6 py-4">{recipient.contact?.phone || "-"}</td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 rounded-md text-xs ${recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400' :
-                              recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
-                                'bg-white/10 text-zinc-300'
+                            recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400' :
+                              'bg-white/10 text-zinc-300'
                             }`}>
                             {recipient.approvalStatus}
                           </span>
                         </td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 rounded-md text-xs ${recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400' :
-                              recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
-                                'bg-white/10 text-zinc-300'
+                            recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                              'bg-white/10 text-zinc-300'
                             }`}>
                             {recipient.sendStatus}
                           </span>
@@ -761,14 +761,14 @@ export default function CampaignDetailsPage() {
 
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${recipient.approvalStatus === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                          recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                            'bg-white/10 text-zinc-300 border border-white/10'
+                        recipient.approvalStatus === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                          'bg-white/10 text-zinc-300 border border-white/10'
                         }`}>
                         {recipient.approvalStatus}
                       </span>
                       <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${recipient.sendStatus === 'SENT' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
-                          recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                            'bg-white/10 text-zinc-400 border border-white/10'
+                        recipient.sendStatus === 'FAILED' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                          'bg-white/10 text-zinc-400 border border-white/10'
                         }`}>
                         {recipient.sendStatus === 'SENT' ? 'Sent' : recipient.sendStatus === 'FAILED' ? 'Failed' : 'Queued'}
                       </span>
@@ -809,8 +809,8 @@ export default function CampaignDetailsPage() {
                       key={type}
                       onClick={() => { setFollowUpType(type); setHasPreview(false); }}
                       className={`py-2 px-3 rounded-lg text-sm font-medium border transition ${followUpType === type
-                          ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
-                          : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
+                        ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
+                        : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
                         }`}
                     >
                       {type.replace('_', ' ')}

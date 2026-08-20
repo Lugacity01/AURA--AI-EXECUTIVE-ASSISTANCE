@@ -39,8 +39,8 @@ export class CampaignPersonalizationService {
       preferredTone: contact.preferredTone || "Professional",
       recentActivities: contact.activities.map(a => `${a.type}: ${a.title}`).join("; "),
       tags: contact.tags.map(t => t.tag.name).join(", "),
-      campaignGoal: campaign.description || "Reach out to discuss collaboration",
-      basePrompt: template?.basePrompt || "",
+      campaignGoal: campaign.description || template?.basePrompt || "Reach out to discuss collaboration",
+      basePrompt: template?.basePrompt || campaign.description || "",
       senderName
     };
 
@@ -179,7 +179,7 @@ Generate the JSON.`;
     let masterSubject = isWhatsApp ? "" : "Campaign Update";
     let masterBody = "No content provided.";
     if (!useAi) {
-      const basePrompt = campaign?.template?.basePrompt || "";
+      const basePrompt = campaign?.template?.basePrompt || campaign?.description || "";
       masterSubject = isWhatsApp ? "" : (campaign?.title || masterSubject);
       masterBody = basePrompt;
 

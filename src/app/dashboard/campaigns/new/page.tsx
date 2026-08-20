@@ -494,8 +494,10 @@ export default function NewCampaignWizard() {
         if (statusRes.ok) {
           const campaignData = await statusRes.json();
           // Wait for the background worker to finish generation and mark campaign as READY
-          if (campaignData.status === "READY" || campaignData.status === "DRAFT") {
-            setCampaignRecipients(campaignData.recipients || []);
+          const recipients = campaignData.recipients || [];
+          const allProcessed = recipients.length > 0 && recipients.every((r: any) => r.approvalStatus !== "PENDING");
+          if (campaignData.status === "READY" || allProcessed) {
+            setCampaignRecipients(recipients);
             clearInterval(interval);
             setStep(6);
           }
@@ -1709,21 +1711,23 @@ export default function NewCampaignWizard() {
                 />
               </div>
 
-              <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-indigo-300 flex items-center gap-2">
-                    <span>📄</span> Attached PDF Document Content
-                  </label>
-                  <span className="text-xs text-zinc-500">Generates {pdfFilename || "Official_Notice.pdf"}</span>
+              {pdfEnabled && (
+                <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-indigo-300 flex items-center gap-2">
+                      <span>📄</span> Attached PDF Document Content
+                    </label>
+                    <span className="text-xs text-zinc-500">Generates {pdfFilename || "Attachment_Document.pdf"}</span>
+                  </div>
+                  <textarea
+                    value={editingDraft.personalizedPdfContent !== undefined && editingDraft.personalizedPdfContent !== null ? editingDraft.personalizedPdfContent : (pdfTemplate || pdfTitle || editingDraft.personalizedBody || "")}
+                    onChange={e => setEditingDraft({ ...editingDraft, personalizedPdfContent: e.target.value })}
+                    placeholder="Enter custom PDF text content for this recipient..."
+                    className="bg-black/50 border border-indigo-500/30 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition resize-y min-h-[180px]"
+                  />
+                  <p className="text-xs text-zinc-400">This content will be rendered into a PDF attachment and delivered to {editingDraft.contact?.email}.</p>
                 </div>
-                <textarea
-                  value={editingDraft.personalizedPdfContent !== undefined && editingDraft.personalizedPdfContent !== null ? editingDraft.personalizedPdfContent : (pdfTemplate || pdfTitle || editingDraft.personalizedBody || "")}
-                  onChange={e => setEditingDraft({ ...editingDraft, personalizedPdfContent: e.target.value })}
-                  placeholder="Enter custom PDF text content for this recipient..."
-                  className="bg-black/50 border border-indigo-500/30 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition resize-y min-h-[180px]"
-                />
-                <p className="text-xs text-zinc-400">This content will be rendered into a PDF attachment and delivered to {editingDraft.contact?.email}.</p>
-              </div>
+              )}
             </div>
 
             <div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-[#0F0F12]">

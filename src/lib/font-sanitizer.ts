@@ -1,8 +1,4 @@
-/**
- * Global Font Character & Symbol Glyph Sanitizer Engine
- * Curbs Wingdings, Webdings, Private Use Area (PUA) symbols (Apple logo, dingbats, wrenches, gift boxes),
- * raw unicode escape artifacts, and replaces all contact placeholders ([Company], [Role], [Name], [Job Title]).
- */
+
 
 export interface ContactPlaceholderData {
   name?: string | null;
@@ -12,11 +8,7 @@ export interface ContactPlaceholderData {
   department?: string | null;
 }
 
-/**
- * Universal Placeholder Replacement Engine
- * Replaces placeholders like [Company], [Role], [Job Title], [Name], [Track], [Department], [Email]
- * with contact profile data or clean fallback values.
- */
+
 export function replaceContactPlaceholders(text: string | null | undefined, contact?: ContactPlaceholderData | null): string {
   if (!text) return "";
 

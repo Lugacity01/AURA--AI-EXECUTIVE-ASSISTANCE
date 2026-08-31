@@ -390,10 +390,12 @@ export default function NewCampaignWizard() {
       return;
     }
 
-    setLoading(true);
     setError("");
-    try {
-      const res = await fetch(`/api/campaigns/${campaignId}/recipients`, {
+    setStep(3);
+
+    // Save recipient selections asynchronously in background
+    if (campaignId) {
+      fetch(`/api/campaigns/${campaignId}/recipients`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -401,58 +403,48 @@ export default function NewCampaignWizard() {
           groupIds: selectedGroupIds,
           organizationIds: selectedOrgIds
         })
+      }).catch(err => {
+        console.error("Failed to save recipients in background:", err);
       });
-      if (!res.ok) throw new Error("Failed to save recipients");
-
-      setStep(3);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleSavePrompt = async () => {
     if (!campaignId) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/campaigns/${campaignId}/template`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          basePrompt,
-          pdfEnabled: Boolean(pdfEnabled),
-          pdfFilename,
-          pdfContentSource,
-          pdfTitle,
-          pdfTemplate,
-          pdfHeaderImage,
-          pdfBackgroundFit,
-          pdfContentX,
-          pdfContentY,
-          pdfContentWidth,
-          pdfContentHeight,
-          pdfFontSize,
-          pdfLineHeight,
-          pdfAlignment
-        })
-      });
-      if (!res.ok) throw new Error("Failed to save base prompt");
-
-      setStep(4);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setStep(4);
+    
+    // Save prompt & PDF canvas settings asynchronously in background
+    fetch(`/api/campaigns/${campaignId}/template`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        basePrompt,
+        pdfEnabled: Boolean(pdfEnabled),
+        pdfFilename,
+        pdfContentSource,
+        pdfTitle,
+        pdfTemplate,
+        pdfHeaderImage,
+        pdfBackgroundFit,
+        pdfContentX,
+        pdfContentY,
+        pdfContentWidth,
+        pdfContentHeight,
+        pdfFontSize,
+        pdfLineHeight,
+        pdfAlignment
+      })
+    }).catch(err => {
+      console.error("Failed to save base prompt in background:", err);
+    });
   };
 
   const handleStartGeneration = async (regenerate: boolean = false) => {
-    setLoading(true);
+    setStep(5);
     try {
-      // Always persist prompt & PDF settings before triggering AI generation
+      // Fire template save & generation trigger in parallel without blocking UI
       if (campaignId) {
-        await fetch(`/api/campaigns/${campaignId}/template`, {
+        fetch(`/api/campaigns/${campaignId}/template`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -472,22 +464,21 @@ export default function NewCampaignWizard() {
             pdfLineHeight,
             pdfAlignment
           })
+        }).catch(() => {});
+
+        fetch(`/api/campaigns/${campaignId}/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            useAi: generationMode === "ai",
+            regenerate,
+            eventDate: eventDate && eventTime ? `${eventDate}T${eventTime}:00Z` : undefined,
+            eventDuration: parseInt(eventDuration)
+          })
+        }).catch(e => {
+          console.error("Failed to start generation:", e);
         });
       }
-
-      const res = await fetch(`/api/campaigns/${campaignId}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          useAi: generationMode === "ai",
-          regenerate,
-          eventDate: eventDate && eventTime ? `${eventDate}T${eventTime}:00Z` : undefined,
-          eventDuration: parseInt(eventDuration)
-        })
-      });
-      if (!res.ok) throw new Error("Failed to start generation");
-
-      setStep(5);
 
       const interval = setInterval(async () => {
         const statusRes = await fetch(`/api/campaigns/${campaignId}`);

@@ -49,13 +49,13 @@ export async function PUT(
 
     const promptText = basePrompt !== undefined ? basePrompt : (campaign.description || "");
 
-    // Update campaign PDF settings and description
+    // Update campaign PDF settings, description, and template atomically
     await prisma.campaign.update({
       where: { id: campaignId },
       data: {
         description: promptText,
         pdfEnabled: isPdfEnabled,
-        pdfFilename: pdfFilename || "Official_Notice.pdf",
+        pdfFilename: pdfFilename || "Attachment_Document.pdf",
         pdfContentSource: pdfContentSource || "EMAIL_BODY",
         pdfTitle: pdfTitle ? String(pdfTitle) : undefined,
         pdfTemplate: pdfTemplate ? String(pdfTemplate) : (promptText || undefined),
@@ -68,30 +68,11 @@ export async function PUT(
         pdfFontSize: typeof pdfFontSize === "number" ? Math.max(9, Math.min(18, pdfFontSize)) : 11,
         pdfLineHeight: typeof pdfLineHeight === "number" ? Math.max(1.0, Math.min(2.0, pdfLineHeight)) : 1.4,
         pdfAlignment: validAlign,
+        template: campaign.templateId
+          ? { update: { basePrompt: promptText } }
+          : { create: { userId: session.user.id, name: `${campaign.title} Template`, basePrompt: promptText } }
       }
     });
-
-    if (basePrompt !== undefined || !campaign.templateId) {
-      const promptText = basePrompt || campaign.description || "";
-      if (campaign.templateId) {
-        await prisma.template.update({
-          where: { id: campaign.templateId },
-          data: { basePrompt: promptText }
-        });
-      } else {
-        const template = await prisma.template.create({
-          data: {
-            userId: session.user.id,
-            name: `${campaign.title} Template`,
-            basePrompt: promptText,
-          }
-        });
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { templateId: template.id }
-        });
-      }
-    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -217,7 +217,7 @@ Your draft should address the sender's points, suggest a positive next step, and
     }
 
     const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_CHAT_MODEL || "google/gemma-4-26b-a4b-it:free",
+      model: process.env.OPENAI_CHAT_MODEL || "google/gemini-2.0-flash-lite-preview-02-05:free",
       messages: [
         { role: "system", content: systemPrompt }
       ]

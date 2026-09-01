@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Megaphone, CheckCircle2, Clock, Users, Activity, ExternalLink, Play, Plus, ChevronRight, X, AlertCircle, UserPlus, Pencil, RefreshCcw, Upload } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { signIn } from "@/lib/auth-client";
 
 export default function CampaignDetailsPage() {
   const { id } = useParams() as { id: string };
@@ -318,6 +319,18 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  const handleGoogleReauth = async () => {
+    try {
+      showToast("Redirecting to Google Re-authentication...");
+      await signIn.social({
+        provider: "google",
+        callbackURL: window.location.href
+      });
+    } catch (err: any) {
+      showToast("Re-authentication failed: " + err.message);
+    }
+  };
+
   const handleSaveRecipient = async () => {
     if (!previewRecipient) return;
     setIsSavingRecipient(true);
@@ -569,6 +582,38 @@ export default function CampaignDetailsPage() {
       </div>
 
       <div className="p-4 md:p-8 flex flex-col gap-8">
+
+        {/* Google OAuth Re-authentication Required Banner */}
+        {((error && (error.includes("Google") || error.includes("token") || error.includes("invalid_grant") || error.includes("expire") || error.includes("OK"))) ||
+          campaign?.recipients?.some((r: any) => r.failedReason?.includes("Google") || r.failedReason?.includes("token") || r.failedReason?.includes("expire") || r.failedReason?.includes("OK")) ||
+          campaign?.jobs?.some((j: any) => j.lastError?.includes("Google") || j.lastError?.includes("token") || j.lastError?.includes("OK"))) && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/10 to-indigo-500/15 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl backdrop-blur-md"
+          >
+            <div className="flex items-start md:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                  <span>🔑 Google Re-authentication Required</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Action Needed</span>
+                </h3>
+                <p className="text-xs text-amber-200/80 mt-1 max-w-xl">
+                  Your Google account session has expired or been revoked. Click below to reconnect Google in 1-click and automatically resume sending your campaign.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleGoogleReauth}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+            >
+              <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
+            </button>
+          </motion.div>
+        )}
 
         {/* Campaign Timeline */}
         {followUps.length > 0 && (

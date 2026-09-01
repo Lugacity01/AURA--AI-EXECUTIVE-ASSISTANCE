@@ -63,54 +63,84 @@ export class CampaignPersonalizationService {
     // 2. Call the AI Pipeline via OpenAI
     const isWhatsApp = campaign.channel === "WHATSAPP";
     
-const systemPrompt = `You are Aura, an elite Executive AI Assistant writing on behalf of the user. 
-Your goal is to WRITE A COMPLETE, HIGHLY PERSONALIZED MESSAGE based on the Base Prompt and the Recipient's Profile Context.
-You MUST adopt the requested Tone. Do NOT just copy the Base Prompt verbatim—you MUST rewrite, polish, and adapt it to perfectly match the requested Tone.
-${isWhatsApp ? "This message is for WhatsApp. Keep it conversational, short, and use emojis appropriately. Do NOT output a subject line." : ""}
-Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. Do not wrap in markdown or backticks.
-CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.`;
+const systemPrompt = `You are Aura, a world-class Executive AI Copywriter and Communication Specialist.
+Your task is to take the user's Base Prompt / Instructions and transform it into a COMPLETE, ARTICULATE, HIGHLY PROFESSIONAL, AND PERSONALIZED EMAIL.
+
+CRITICAL CREATIVE MANDATES:
+1. NEVER ECHO OR PARROT SHORT PROMPTS VERBATIM: Even if the user enters a brief draft or instruction, you MUST expand, polish, and elevate it into a well-structured, engaging, multi-sentence message with proper context and professional flow.
+2. PERSONALIZATION INTEGRATION: Intelligently incorporate the recipient's Profile Context (Name, Track/Company, Role) naturally into the body so it feels written specifically for them.
+3. CLEAR & IMPACTFUL STRUCTURE: Include a warm greeting, an engaging opening, clear key details/reminders, and an encouraging closing sign-off.
+4. ${isWhatsApp ? "This is a WhatsApp message. Keep paragraphs brief, punchy, conversational, and use emojis appropriately. Do NOT output a subject line." : "Create a compelling, clear subject line that summarizes the topic."}
+
+Output format: Return ONLY a JSON object with ${isWhatsApp ? "a 'body' property" : "'subject' and 'body' properties"}. Do not use markdown backticks or extra text outside JSON.`;
 
     const userPrompt = `
-Base Prompt:
+Base Prompt / User Instructions:
+"""
 ${personalizationContext.basePrompt || personalizationContext.campaignGoal}
+"""
 
 Recipient Profile Context:
-- Name: ${personalizationContext.recipientName}
-- Company / Track: ${personalizationContext.company}
-- Job Title: ${personalizationContext.jobTitle}
+- Recipient Name: ${personalizationContext.recipientName}
+- Company / Track / Organization: ${personalizationContext.company}
+- Job Title / Role: ${personalizationContext.jobTitle}
 - Department: ${personalizationContext.department}
-- Previous Notes: ${personalizationContext.notes}
-- AI Summary: ${personalizationContext.aiSummary}
-- Desired Tone: ${personalizationContext.preferredTone}
+- Additional Context / Notes: ${personalizationContext.notes || "None"}
+- Desired Tone: ${personalizationContext.preferredTone || "Professional & Warm"}
+- Sender Sign-off Name: ${personalizationContext.senderName}
 
-CRITICAL INSTRUCTION 1: You MUST replace any placeholders like [Student's Name], [Name], or instructions like (Check individual from their company name as their track) with the actual corresponding data from the Recipient Profile Context. Do NOT output the raw brackets or instructions in the final message.
-CRITICAL INSTRUCTION 2: If the Base Prompt leaves a blank space for a value (e.g., "Track: ", "Company: "), you MUST intelligently fill it in using the Recipient Profile Context. Never leave it blank!
-CRITICAL INSTRUCTION 3: Do NOT add a double signature. If the Base Prompt already includes a sign-off or signature at the bottom (e.g. "Best wishes, Company Name"), preserve it exactly and DO NOT append the sender's name. Only append ${personalizationContext.senderName} if there is absolutely no sign-off in the draft.
+INSTRUCTIONS:
+1. Rewrite and expand the Base Prompt into a beautifully written, articulate message tailored for ${personalizationContext.recipientName}.
+2. Replace any raw placeholders like [Name], [Track], [Company] with real recipient data (${personalizationContext.recipientName}, ${personalizationContext.company}).
+3. Ensure the tone is ${personalizationContext.preferredTone || "Professional & Warm"}.
 
-Generate the JSON.`;
-
-    let subject = isWhatsApp ? "" : `Update for ${personalizationContext.company}`;
+Generate the JSON object:`;    let subject = isWhatsApp ? "" : `Update for ${personalizationContext.company}`;
     let body = `Hi ${personalizationContext.recipientName},\n\nWe wanted to reach out to you.\n\nBest,\nAura`;
 
-    try {
-      const response = await openai.chat.completions.create({
-        model: process.env.OPENAI_CHAT_MODEL || "gpt-4o",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      });
+    const modelsToTry = Array.from(new Set([
+      process.env.OPENAI_CHAT_MODEL || "openai/gpt-4o-mini",
+      "openai/gpt-4o-mini",
+      "meta-llama/llama-3.3-70b-instruct",
+      "gpt-4o"
+    ]));
 
-      let rawContent = response.choices[0].message.content || "{}";
-      rawContent = rawContent.trim().replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
-      const parsed = JSON.parse(rawContent);
-      if (parsed.subject) subject = parsed.subject;
-      if (parsed.body) body = parsed.body;
-    } catch (e) {
-      console.error("Failed to generate AI email:", e);
-      // Fallback to basic template if API fails
-      body = `Hi ${personalizationContext.recipientName},\n\n${personalizationContext.basePrompt}\n\nBest,`;
+    for (const model of modelsToTry) {
+      try {
+        const response = await openai.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        });
+
+        let rawContent = response.choices[0]?.message?.content || "";
+        if (!rawContent) continue;
+
+        try {
+          const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.subject || parsed.body) {
+              if (parsed.subject) subject = parsed.subject;
+              if (parsed.body) body = parsed.body;
+              break;
+            }
+          }
+        } catch {
+          // Fallback text parser if model returns plain text
+          const subjectMatch = rawContent.match(/(?:Subject|Title):\s*(.+)/i);
+          if (subjectMatch) subject = subjectMatch[1].trim();
+          
+          const bodyText = rawContent.replace(/(?:Subject|Title):\s*.+/i, "").trim();
+          if (bodyText) {
+            body = bodyText;
+            break;
+          }
+        }
+      } catch (e: any) {
+        console.warn(`AI model ${model} failed, trying fallback:`, e.message || e);
+      }
     }
 
     // 2.5 Generate personalized PDF Content if PDF Attachment is enabled
@@ -142,19 +172,18 @@ Generate the JSON.`;
     });
   }
 
+  /**
+   * Bulk generates drafts for all pending recipients in a campaign.
+   */
   static async generateAllForCampaign(campaignId: string, userId: string, useAi: boolean = true, regenerate: boolean = false) {
-    // If regenerating, reset all generated/failed recipients back to PENDING
-    if (regenerate) {
-      await prisma.campaignRecipient.updateMany({
-        where: { 
-          campaignId,
-          sendStatus: { not: 'SENT' }, // Reset anything that hasn't been sent yet
-          // Only reset if they aren't already pending
-          approvalStatus: { not: CampaignRecipientStatus.PENDING }
-        },
-        data: { approvalStatus: CampaignRecipientStatus.PENDING }
-      });
-    }
+    // ALWAYS reset all unsent recipients back to PENDING so AI always generates/regenerates fresh drafts
+    await prisma.campaignRecipient.updateMany({
+      where: { 
+        campaignId,
+        sendStatus: { not: 'SENT' } // Reset anything that hasn't been sent yet
+      },
+      data: { approvalStatus: CampaignRecipientStatus.PENDING }
+    });
 
     // Marks campaign as GENERATING
     const campaign = await prisma.campaign.update({
@@ -183,33 +212,48 @@ Generate the JSON.`;
       masterSubject = isWhatsApp ? "" : (campaign?.title || masterSubject);
       masterBody = basePrompt;
 
-      try {
-        const response = await openai.chat.completions.create({
-          model: process.env.OPENAI_CHAT_MODEL || "gpt-4o",
-          response_format: { type: "json_object" },
-          messages: [
-            { 
-              role: "system", 
-              content: `You are Aura, an elite AI assistant. Write a polished, highly professional mass message based on the User's draft. 
-                        Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. 
-                        Do not wrap in markdown or backticks. 
-                        CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.
-                        ${isWhatsApp ? "This is a WhatsApp broadcast. Keep paragraphs short and conversational. Include emojis where natural. No subject line." : ""}
-                        CRITICAL INSTRUCTIONS:
-                        1. Use '[Name]' as the placeholder for the recipient's name (e.g. "Hi [Name],").
-                        2. If the User's draft includes a signature or sign-off at the end, preserve it EXACTLY as written. If not, sign off as: ${senderName}` 
-            },
-            { role: "user", content: `Draft/Goal: ${basePrompt || campaign?.description || ""}` }
-          ]
-        });
+      const masterModelsToTry = Array.from(new Set([
+        process.env.OPENAI_CHAT_MODEL || "openai/gpt-4o-mini",
+        "openai/gpt-4o-mini",
+        "meta-llama/llama-3.3-70b-instruct",
+        "gpt-4o"
+      ]));
 
-        let rawMaster = response.choices[0].message.content || "{}";
-        rawMaster = rawMaster.trim().replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
-        const parsed = JSON.parse(rawMaster);
-        if (parsed.subject) masterSubject = parsed.subject;
-        if (parsed.body) masterBody = parsed.body;
-      } catch (e) {
-        console.error("Master AI Template generation failed:", e);
+      for (const model of masterModelsToTry) {
+        try {
+          const response = await openai.chat.completions.create({
+            model,
+            messages: [
+              { 
+                role: "system", 
+                content: `You are Aura, an elite AI assistant. Write a polished, highly professional mass message based on the User's draft. 
+                          Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. 
+                          Do not wrap in markdown or backticks. 
+                          CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.
+                          ${isWhatsApp ? "This is a WhatsApp broadcast. Keep paragraphs short and conversational. Include emojis where natural. No subject line." : ""}
+                          CRITICAL INSTRUCTIONS:
+                          1. Use '[Name]' as the placeholder for the recipient's name (e.g. "Hi [Name],").
+                          2. If the User's draft includes a signature or sign-off at the end, preserve it EXACTLY as written. If not, sign off as: ${senderName}` 
+              },
+              { role: "user", content: `Draft/Goal: ${basePrompt || campaign?.description || ""}` }
+            ]
+          });
+
+          let rawMaster = response.choices[0]?.message?.content || "";
+          if (!rawMaster) continue;
+
+          const jsonMatch = rawMaster.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            rawMaster = jsonMatch[0];
+          }
+
+          const parsed = JSON.parse(rawMaster);
+          if (parsed.subject) masterSubject = parsed.subject;
+          if (parsed.body) masterBody = parsed.body;
+          if (parsed.subject || parsed.body) break;
+        } catch (e: any) {
+          console.warn(`Master AI template model ${model} failed, trying fallback:`, e.message || e);
+        }
       }
     }
 

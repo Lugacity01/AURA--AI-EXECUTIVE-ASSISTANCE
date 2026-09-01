@@ -60,7 +60,10 @@ export class TokenManager {
         if (!res.ok) {
           const errText = await res.text();
           console.error("Better Auth token refresh failed:", errText);
-          throw new Error("Better Auth token refresh response from Google was not OK");
+          if (account.accessToken) {
+            return account.accessToken;
+          }
+          throw new Error("Google access token has expired. Please re-authenticate your Google account in Settings or sign in again.");
         }
 
         const data = await res.json();
@@ -76,9 +79,12 @@ export class TokenManager {
         });
 
         return data.access_token;
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error refreshing Better Auth token:", err);
-        throw err;
+        if (account.accessToken) {
+          return account.accessToken;
+        }
+        throw new Error(err.message || "Google access token has expired. Please sign in again.");
       }
     }
 

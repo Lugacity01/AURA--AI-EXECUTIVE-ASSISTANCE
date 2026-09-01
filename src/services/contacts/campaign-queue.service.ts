@@ -272,22 +272,34 @@ export class CampaignQueueService {
       } catch (err: any) {
         // Job Retry logic if token fetch fails or something catastrophic happens
         console.error(`Queue job failed for campaign ${job.campaignId}:`, err);
-        await prisma.campaignQueue.update({
-          where: { id: job.id },
+
+        // Update recipients to FAILED so user sees exact reason in UI
+        await prisma.campaignRecipient.updateMany({
+          where: {
+            campaignId: job.campaignId,
+            approvalStatus: "APPROVED",
+            sendStatus: "PENDING"
+          },
           data: {
-            status: job.attempts >= 3 ? "FAILED" : "QUEUED",
-            attempts: job.attempts + 1,
-            lastError: err.message,
-            nextRunAt: new Date(Date.now() + 1000 * 60 * 5) // retry in 5 mins
+            sendStatus: "FAILED",
+            failedReason: err.message || "Email dispatch failed"
           }
         });
 
-        if (job.attempts >= 3) {
-          await prisma.campaign.update({
-            where: { id: job.campaignId },
-            data: { status: "FAILED" }
-          });
-        }
+        await prisma.campaignQueue.update({
+          where: { id: job.id },
+          data: {
+            status: "FAILED",
+            attempts: job.attempts + 1,
+            lastError: err.message,
+            nextRunAt: new Date()
+          }
+        });
+
+        await prisma.campaign.update({
+          where: { id: job.campaignId },
+          data: { status: "FAILED" }
+        });
       }
     }
   }

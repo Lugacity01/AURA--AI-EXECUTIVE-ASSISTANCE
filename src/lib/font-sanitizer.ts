@@ -31,11 +31,7 @@ export function replaceContactPlaceholders(text: string | null | undefined, cont
     .replace(/\[Email\]|\[Email Address\]/gi, email);
 }
 
-/**
- * Cleans text for Browser UI rendering.
- * Strips Private Use Area (PUA) character ranges (\uE000-\uF8FF, \uF0000-\uFFFFF)
- * that cause browsers to render text as random dingbat/symbol icons (Apple logo, wrenches, gift boxes, etc.).
- */
+
 export function cleanBrowserText(text: string | null | undefined): string {
   if (!text) return "";
 

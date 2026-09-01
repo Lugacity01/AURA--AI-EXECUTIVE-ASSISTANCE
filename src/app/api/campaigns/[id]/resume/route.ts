@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { CampaignStatus } from "@prisma/client";
 import { CampaignQueueService } from "@/services/contacts/campaign-queue.service";
 
 export async function POST(
@@ -23,38 +24,44 @@ export async function POST(
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    // Find any queue jobs for this campaign that might be stuck in PROCESSING
-    const stuckJobs = await prisma.campaignQueue.findMany({
-      where: { campaignId: id, status: "PROCESSING" }
+    // Reset or recreate queue job for this campaign
+    await prisma.campaignQueue.deleteMany({
+      where: { campaignId: id }
     });
 
-    if (stuckJobs.length > 0) {
-      // Reset stuck jobs back to QUEUED
-      await prisma.campaignQueue.updateMany({
-        where: { campaignId: id, status: "PROCESSING" },
-        data: { status: "QUEUED" }
-      });
-    } else {
-      // If no stuck job is found, maybe there is no job at all? 
-      // Let's create one if it doesn't exist, just to be safe.
-      const queuedJobs = await prisma.campaignQueue.count({
-        where: { campaignId: id, status: "QUEUED" }
-      });
-      if (queuedJobs === 0) {
-        await prisma.campaignQueue.create({
-          data: {
-            campaignId: id,
-            status: "QUEUED",
-            nextRunAt: new Date()
-          }
-        });
+    await prisma.campaignQueue.create({
+      data: {
+        campaignId: id,
+        status: "QUEUED",
+        attempts: 0,
+        nextRunAt: new Date(),
+        lastError: null
       }
-    }
+    });
 
-    // Re-trigger the queue background processor
-    CampaignQueueService.processQueue().catch(console.error);
+    // Reset failed recipients back to PENDING if user wants to retry sending
+    await prisma.campaignRecipient.updateMany({
+      where: {
+        campaignId: id,
+        approvalStatus: "APPROVED",
+        sendStatus: "FAILED"
+      },
+      data: {
+        sendStatus: "PENDING",
+        failedReason: null
+      }
+    });
 
-    return NextResponse.json({ success: true, message: "Campaign resumed successfully." });
+    // Reset campaign status to SENDING
+    await prisma.campaign.update({
+      where: { id },
+      data: { status: CampaignStatus.SENDING }
+    });
+
+    // Immediately trigger the queue background processor
+    await CampaignQueueService.processQueue();
+
+    return NextResponse.json({ success: true, message: "Campaign force resumed and processing queue." });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

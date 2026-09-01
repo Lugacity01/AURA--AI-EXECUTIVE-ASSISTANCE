@@ -440,6 +440,7 @@ export default function NewCampaignWizard() {
   };
 
   const handleStartGeneration = async (regenerate: boolean = false) => {
+    setCampaignRecipients([]);
     setStep(5);
     try {
       // Fire template save & generation trigger in parallel without blocking UI
@@ -471,7 +472,7 @@ export default function NewCampaignWizard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             useAi: generationMode === "ai",
-            regenerate,
+            regenerate: true,
             eventDate: eventDate && eventTime ? `${eventDate}T${eventTime}:00Z` : undefined,
             eventDuration: parseInt(eventDuration)
           })
@@ -484,16 +485,14 @@ export default function NewCampaignWizard() {
         const statusRes = await fetch(`/api/campaigns/${campaignId}`);
         if (statusRes.ok) {
           const campaignData = await statusRes.json();
-          // Wait for the background worker to finish generation and mark campaign as READY
           const recipients = campaignData.recipients || [];
-          const allProcessed = recipients.length > 0 && recipients.every((r: any) => r.approvalStatus !== "PENDING");
-          if (campaignData.status === "READY" || allProcessed) {
+          if (campaignData.status === "READY" && recipients.length > 0) {
             setCampaignRecipients(recipients);
             clearInterval(interval);
             setStep(6);
           }
         }
-      }, 3000);
+      }, 2000);
 
       setGenerationInterval(interval);
     } catch (e: any) {

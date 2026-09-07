@@ -26,7 +26,7 @@ export default function NewCampaignWizard() {
   const [campaignType, setCampaignType] = useState("NEWSLETTER");
   const [channel, setChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [basePrompt, setBasePrompt] = useState("");
-  const [generationMode, setGenerationMode] = useState<"ai" | "standard">("ai");
+  const [generationMode, setGenerationMode] = useState<"ai" | "standard">("standard");
   const [recipientSearch, setRecipientSearch] = useState("");
 
   // PDF Attachment & A4 Letterhead Canvas State

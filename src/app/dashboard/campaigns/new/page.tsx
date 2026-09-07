@@ -26,7 +26,7 @@ export default function NewCampaignWizard() {
   const [campaignType, setCampaignType] = useState("NEWSLETTER");
   const [channel, setChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [basePrompt, setBasePrompt] = useState("");
-  const [generationMode, setGenerationMode] = useState<"ai" | "standard">("standard");
+  const [generationMode, setGenerationMode] = useState<"ai" | "standard">("ai");
   const [recipientSearch, setRecipientSearch] = useState("");
 
   // PDF Attachment & A4 Letterhead Canvas State
@@ -367,13 +367,6 @@ export default function NewCampaignWizard() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    const isSingleContact = selectedContactIds.length === 1 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0;
-    if (isSingleContact && generationMode === "ai") {
-      setGenerationMode("standard");
-    }
-  }, [selectedContactIds, selectedGroupIds, selectedOrgIds, generationMode]);
 
   useEffect(() => {
     // Cleanup interval on unmount
@@ -889,42 +882,31 @@ export default function NewCampaignWizard() {
               <div className="bg-white/5 border border-white/10 p-6 rounded-xl">
                 <h3 className="text-white font-medium mb-4">Content Generation Mode</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  {(() => {
-                    const isSingleContact = selectedContactIds.length === 1 && selectedGroupIds.length === 0 && selectedOrgIds.length === 0;
-                    return (
-                      <>
-                        <div
-                          onClick={() => {
-                            if (!isSingleContact) setGenerationMode("ai");
-                          }}
-                          className={`p-4 rounded-xl border transition flex flex-col gap-2 ${isSingleContact ? "opacity-50 cursor-not-allowed bg-black/50 border-white/5" : "cursor-pointer " + (generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30")
-                            }`}
-                          title={isSingleContact ? "Deep AI Personalization is disabled when targeting only a single contact." : ""}
-                        >
-                          <div className="flex items-center gap-2 text-white font-medium">
-                            <Wand2 className="w-4 h-4 text-indigo-400" />
-                            Deep AI Personalization
-                          </div>
-                          <p className="text-sm text-zinc-400">
-                            {isSingleContact ? "Disabled because you are only messaging 1 person." : "Aura will rewrite and personalize the base prompt specifically for each recipient using their profile data."}
-                          </p>
-                        </div>
+                  <div
+                    onClick={() => setGenerationMode("ai")}
+                    className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
+                  >
+                    <div className="flex items-center gap-2 text-white font-medium">
+                      <Wand2 className="w-4 h-4 text-indigo-400" />
+                      Deep AI Personalization
+                    </div>
+                    <p className="text-sm text-zinc-400">
+                      Aura will rewrite and personalize the base prompt specifically for each recipient using their profile data.
+                    </p>
+                  </div>
 
-                        <div
-                          onClick={() => setGenerationMode("standard")}
-                          className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "standard" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
-                        >
-                          <div className="flex items-center gap-2 text-white font-medium">
-                            <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                            AI Master Template
-                          </div>
-                          <p className="text-sm text-zinc-400">
-                            Aura will generate one polished, professional master email based on your prompt, and send that exact email to everyone.
-                          </p>
-                        </div>
-                      </>
-                    );
-                  })()}
+                  <div
+                    onClick={() => setGenerationMode("standard")}
+                    className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "standard" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
+                  >
+                    <div className="flex items-center gap-2 text-white font-medium">
+                      <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                      AI Master Template
+                    </div>
+                    <p className="text-sm text-zinc-400">
+                      Aura will generate one polished, professional master email based on your prompt, and send that exact email to everyone.
+                    </p>
+                  </div>
                 </div>
               </div>
 

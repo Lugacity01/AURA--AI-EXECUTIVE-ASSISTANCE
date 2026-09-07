@@ -324,10 +324,22 @@ Generate the JSON object:`;
               rawMaster = jsonMatch[0];
             }
 
-            const parsed = JSON.parse(rawMaster);
-            if (parsed.subject) masterSubject = parsed.subject;
-            if (parsed.body) masterBody = parsed.body;
-            if (parsed.subject || parsed.body) break;
+            try {
+              const parsed = JSON.parse(rawMaster);
+              if (parsed.subject) masterSubject = parsed.subject;
+              if (parsed.body) masterBody = parsed.body;
+              if (parsed.subject || parsed.body) break;
+            } catch {
+              // Fallback text parser if model returns plain text instead of strict JSON
+              const subjectMatch = rawMaster.match(/(?:Subject|Title):\s*(.+)/i);
+              if (subjectMatch) masterSubject = subjectMatch[1].trim();
+              
+              const bodyText = rawMaster.replace(/(?:Subject|Title):\s*.+/i, "").trim();
+              if (bodyText) {
+                masterBody = bodyText;
+                break;
+              }
+            }
           } catch (e: any) {
             console.warn(`Master AI template model ${model} failed, trying fallback:`, e.message || e);
           }

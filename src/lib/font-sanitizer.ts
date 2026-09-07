@@ -19,8 +19,8 @@ export function replaceContactPlaceholders(text: string | null | undefined, cont
   const email = contact?.email || "";
 
   return text
-    // Replace Name placeholders
-    .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]|\[Recipient Name\]|\[First Name\]|\[Contact Name\]|\[Full Name\]/gi, name)
+    // Replace Name & Recipient & Empty Bracket placeholders
+    .replace(/\[Name\]|\[Student's Name\]|\[Student Name\]|\[Recipient Name\]|\[First Name\]|\[Contact Name\]|\[Full Name\]|\[Recipient\]|\[Contact\]|\[\s*\]/gi, name)
     // Replace Company & Track & Organization placeholders
     .replace(/\[Company\]|\[Track\]|\[Company Name\]|\[Organization\]/gi, company)
     // Replace Job Title & Role & Position placeholders

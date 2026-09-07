@@ -11,12 +11,16 @@ const openai = new OpenAI({
 export class CampaignPersonalizationService {
   /**
    * Post-processes generated email bodies to strictly ensure opening greetings address the recipient
-   * and NEVER accidentally address the sender.
+   * and NEVER accidentally address the sender or output empty brackets.
    */
   private static sanitizeSalutation(body: string, recipientName: string, senderName: string, isMasterTemplate: boolean = false): string {
     if (!body) return body;
 
     const targetName = isMasterTemplate ? "[Name]" : (recipientName?.trim() || "there");
+
+    // Clean any empty brackets like "Dear []," or "Hi [ ]," or "Dear ,"
+    body = body.replace(/((?:Dear|Hi|Hello|Greetings|Good\s+(?:day|evening|morning)|Hey)\s+)\[\s*\]([,\!\:]?)/gi, `$1${targetName}$2`);
+    body = body.replace(/((?:Dear|Hi|Hello|Greetings|Good\s+(?:day|evening|morning)|Hey)\s+),/gi, `$1${targetName},`);
 
     // Matches standard opening greetings at the very start of the body:
     // e.g., "Dear Azeez Mumeenat," or "Hi Azeez Mumeenat," or "Hello Azeez Mumeenat,"
@@ -120,16 +124,20 @@ MEETING / CLASS BROADCAST DETAILS:
     const isWhatsApp = campaign.channel === "WHATSAPP";
     
     const systemPrompt = `You are Aura, a world-class Executive AI Copywriter and Communication Specialist.
-Your task is to take the user's Base Prompt / Instructions and transform it into a COMPLETE, ARTICULATE, HIGHLY PROFESSIONAL, AND PERSONALIZED EMAIL.
+Your task is to take the user's Base Prompt / Instructions and transform it into a COMPLETE, ARTICULATE, ENGAGING, HIGHLY PROFESSIONAL, AND FULLY EXPANDED EMAIL.
 
-CRITICAL CREATIVE MANDATES:
-1. NEVER ECHO OR PARROT SHORT PROMPTS VERBATIM: Even if the user enters a brief draft or instruction, you MUST expand, polish, and elevate it into a well-structured, engaging, multi-sentence message with proper context and professional flow.
-2. PERSONALIZATION INTEGRATION: Intelligently incorporate the recipient's Profile Context naturally into the body so it feels written specifically for them.
+CRITICAL CREATIVE EXPANSION MANDATES:
+1. DEEP CREATIVE EXPANSION (DO NOT PARROT SHORT PROMPTS): Never echo brief drafts or short instructions verbatim! You MUST creatively expand and elaborate beyond the user's raw input. Add rich contextual details, explain key takeaways, why this event/topic matters, what attendees will learn or gain, practical preparation tips, and clear next steps.
+2. MULTI-PARAGRAPH STRUCTURE: Unless this is WhatsApp, the email MUST be structured into at least 3 to 4 distinct, well-written paragraphs/sections:
+   - Paragraph 1: Warm professional greeting and an engaging opening context.
+   - Paragraph 2: Comprehensive overview of the event/topic, key objectives, and why it is important.
+   - Paragraph 3: Actionable details, what to expect, or bulleted key takeaways / reminders.
+   - Paragraph 4: Encouraging closing call-to-action and professional sign-off.
 3. RECIPIENT SALUTATION vs SENDER SIGNATURE:
    - The opening greeting MUST address the RECIPIENT (${personalizationContext.recipientName || 'there'}). Example: "Dear ${personalizationContext.recipientName || 'there'},".
    - NEVER put the Sender's name (${personalizationContext.senderName}) in the opening greeting! The Sender (${personalizationContext.senderName}) MUST ONLY appear in the closing sign-off at the end.
-4. ${campaign.campaignType === "MEETING" ? "MEETING BROADCAST: State the meeting/class topic, scheduled time clearly, and remind attendees to join." : ""}
-5. ${isWhatsApp ? "This is a WhatsApp message. Keep paragraphs brief, punchy, conversational, and use emojis appropriately. Do NOT output a subject line." : "Create a compelling, clear subject line that summarizes the topic."}
+4. ${campaign.campaignType === "MEETING" ? "MEETING BROADCAST: State the meeting/class topic, scheduled time clearly, remind attendees to be present, and note that a Google Meet link will be provided." : ""}
+5. ${isWhatsApp ? "This is a WhatsApp message. Keep paragraphs brief, punchy, conversational, and use emojis appropriately. Do NOT output a subject line." : "Create an engaging, compelling subject line that captures attention."}
 
 Output format: Return ONLY a JSON object with ${isWhatsApp ? "a 'body' property" : "'subject' and 'body' properties"}. Do not use markdown backticks or extra text outside JSON.`;
 
@@ -150,10 +158,11 @@ Recipient Profile Context:
 - Sender Sign-off Name: ${personalizationContext.senderName}
 
 INSTRUCTIONS:
-1. Rewrite and expand the Base Prompt into a beautifully written, articulate message. Start with "Dear ${personalizationContext.recipientName || 'there'}," (or "Hi ${personalizationContext.recipientName || 'there'},").
-2. DO NOT address ${personalizationContext.senderName} in the greeting. Address ${personalizationContext.recipientName || 'there'}.
-3. Replace any raw placeholders like [Name], [Track], [Company] with real recipient data (${personalizationContext.recipientName}, ${personalizationContext.company}).
-4. Ensure the tone is ${personalizationContext.preferredTone || "Professional & Warm"}.
+1. Creatively expand and rewrite the Base Prompt into a beautifully written, articulate, multi-paragraph email. Start with "Dear ${personalizationContext.recipientName || 'there'}," (or "Hi ${personalizationContext.recipientName || 'there'},").
+2. Elaborate on the context, value, expectations, and next steps so the message feels thorough and professional.
+3. DO NOT address ${personalizationContext.senderName} in the greeting. Address ${personalizationContext.recipientName || 'there'}.
+4. Replace any raw placeholders like [Name], [Track], [Company] with real recipient data (${personalizationContext.recipientName}, ${personalizationContext.company}).
+5. Ensure the tone is ${personalizationContext.preferredTone || "Professional & Warm"}.
 
 Generate the JSON object:`;
 
@@ -300,16 +309,16 @@ Generate the JSON object:`;
               messages: [
                 { 
                   role: "system", 
-                  content: `You are Aura, an elite AI assistant. Write a polished, highly professional mass message template based on the User's draft. 
+                  content: `You are Aura, an elite AI assistant. Write a polished, highly professional, and fully expanded mass message template based on the User's draft. 
                             Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. 
                             Do not wrap in markdown or backticks. 
                             CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.
                             ${isWhatsApp ? "This is a WhatsApp broadcast. Keep paragraphs short and conversational. Include emojis where natural. No subject line." : ""}
-                            CRITICAL SALUTATION & PLACEHOLDER MANDATES:
-                            1. The opening greeting MUST start with 'Dear [Name],' or 'Hi [Name],' using '[Name]' as the recipient placeholder.
-                            2. If the User's draft has an existing greeting addressing any specific name (such as 'Dear Azeez Mumeenat,' or 'Dear Student,'), REPLACE IT WITH 'Dear [Name],'.
+                            CRITICAL CREATIVE EXPANSION & SALUTATION MANDATES:
+                            1. DEEP CREATIVE EXPANSION: Never output a brief 1-2 sentence memo! Creatively expand the user's prompt into a complete, rich, multi-paragraph message explaining the event/topic in detail, key takeaways/expectations, and why it is valuable.
+                            2. SALUTATION & PLACEHOLDERS: The opening greeting MUST start with 'Dear [Name],' or 'Hi [Name],' using '[Name]' as the recipient placeholder. Replace any raw brackets like '[]' or specific names in the user's draft greeting with 'Dear [Name],'.
                             3. SENDER VS RECIPIENT: The sender is '${senderName}'. NEVER address '${senderName}' in the opening greeting! '${senderName}' MUST ONLY appear in the closing signature at the very end.
-                            ${campaign?.campaignType === "MEETING" ? "4. MEETING BROADCAST: State the class/meeting topic and scheduled time clearly in the template body." : ""}
+                            ${campaign?.campaignType === "MEETING" ? "4. MEETING BROADCAST: State the class/meeting topic, scheduled time, and attendance expectations clearly." : ""}
                             5. If the User's draft includes a signature or sign-off at the end, preserve it. If not, sign off as: ${senderName}` 
                 },
                 { role: "user", content: `Draft/Goal: ${basePrompt || campaign?.description || ""}${meetingContext}` }

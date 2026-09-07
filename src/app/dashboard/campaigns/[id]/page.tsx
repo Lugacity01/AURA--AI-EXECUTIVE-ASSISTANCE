@@ -319,12 +319,26 @@ export default function CampaignDetailsPage() {
     }
   };
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("autoResume") === "true") {
+        url.searchParams.delete("autoResume");
+        window.history.replaceState({}, "", url.toString());
+        showToast("Google account re-authenticated! Resuming campaign sending...");
+        handleForceResume();
+      }
+    }
+  }, []);
+
   const handleGoogleReauth = async () => {
     try {
       showToast("Redirecting to Google Re-authentication...");
+      const redirectUrl = new URL(window.location.href);
+      redirectUrl.searchParams.set("autoResume", "true");
       await signIn.social({
         provider: "google",
-        callbackURL: window.location.href
+        callbackURL: redirectUrl.toString()
       });
     } catch (err: any) {
       showToast("Re-authentication failed: " + err.message);
@@ -584,36 +598,47 @@ export default function CampaignDetailsPage() {
       <div className="p-4 md:p-8 flex flex-col gap-8">
 
         {/* Google OAuth Re-authentication Required Banner */}
-        {((error && (error.includes("Google") || error.includes("token") || error.includes("invalid_grant") || error.includes("expire") || error.includes("OK"))) ||
-          campaign?.recipients?.some((r: any) => r.failedReason?.includes("Google") || r.failedReason?.includes("token") || r.failedReason?.includes("expire") || r.failedReason?.includes("OK")) ||
-          campaign?.jobs?.some((j: any) => j.lastError?.includes("Google") || j.lastError?.includes("token") || j.lastError?.includes("OK"))) && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/10 to-indigo-500/15 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl backdrop-blur-md"
-          >
-            <div className="flex items-start md:items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                  <span>🔑 Google Re-authentication Required</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Action Needed</span>
-                </h3>
-                <p className="text-xs text-amber-200/80 mt-1 max-w-xl">
-                  Your Google account session has expired or been revoked. Click below to reconnect Google in 1-click and automatically resume sending your campaign.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleGoogleReauth}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+        {(() => {
+          const isGoogleAuthError = (str: string | null | undefined) => {
+            if (!str) return false;
+            return /Google|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token/i.test(str);
+          };
+
+          const hasAuthError = (error && isGoogleAuthError(error)) ||
+            campaign?.recipients?.some((r: any) => r.sendStatus === 'FAILED' && isGoogleAuthError(r.failedReason)) ||
+            campaign?.jobs?.some((j: any) => j.status === 'FAILED' && isGoogleAuthError(j.lastError));
+
+          if (!hasAuthError) return null;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/10 to-indigo-500/15 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl backdrop-blur-md"
             >
-              <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
-            </button>
-          </motion.div>
-        )}
+              <div className="flex items-start md:items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                    <span>🔑 Google Re-authentication Required</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Action Needed</span>
+                  </h3>
+                  <p className="text-xs text-amber-200/80 mt-1 max-w-xl">
+                    Your Google account session has expired or been revoked. Click below to reconnect Google in 1-click and automatically resume sending your campaign.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleGoogleReauth}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              >
+                <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
+              </button>
+            </motion.div>
+          );
+        })()}
 
         {/* Campaign Timeline */}
         {followUps.length > 0 && (

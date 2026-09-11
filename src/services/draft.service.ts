@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { AIService } from "./ai.service";
-import OpenAI from "openai";
+import { createAICompletion } from "@/lib/openai-client";
 import { TokenManager } from "./gmail/token-manager";
 
 export class DraftService {
@@ -197,11 +197,6 @@ export class DraftService {
     const senderName = email.fromName || email.from;
     const bodyContent = email.bodyText || email.body;
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY || "",
-      baseURL: "https://openrouter.ai/api/v1",
-    });
-
     let systemPrompt = `You are Aura, an executive AI assistant.
 Draft a professional, helpful email response on behalf of Yinka.
 Below is the incoming email detail:
@@ -216,8 +211,7 @@ Your draft should address the sender's points, suggest a positive next step, and
       systemPrompt += `\n\nCRITICAL: The user has provided the following specific instructions or a rough draft to base the response on:\n"${customInstructions}"\nEnsure the final response strictly adheres to this direction and incorporates these edits professionally.`;
     }
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_CHAT_MODEL || "google/gemini-2.0-flash-lite-preview-02-05:free",
+    const completion = await createAICompletion({
       messages: [
         { role: "system", content: systemPrompt }
       ]

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "../../../lib/auth";
 import { headers } from "next/headers";
 import { DraftService } from "../../../services/draft.service";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     });
     const userId = session?.user?.id || "mock-user-123";
     const body = await request.json();
-    const { draftId, emailId, action } = body; // action: "approve" | "archive" | "generate"
+    const { draftId, emailId, action } = body; // action: "approve" | "archive" | "generate" | "restore"
 
     if (!action) {
       return NextResponse.json({ error: "Missing action parameter" }, { status: 400 });
@@ -54,18 +55,35 @@ export async function POST(request: Request) {
       return NextResponse.json(result);
     }
 
-    if (!draftId) {
-      return NextResponse.json({ error: "Missing draftId parameters" }, { status: 400 });
+    let targetDraftId = draftId;
+    if (!targetDraftId && emailId) {
+      const existingDraft = await prisma.emailDraft.findUnique({ where: { emailId } });
+      if (existingDraft) {
+        targetDraftId = existingDraft.id;
+      } else if (action === "approve") {
+        const newDraft = await DraftService.generateDraftForEmail(emailId, userId);
+        targetDraftId = newDraft.id;
+      } else if (action === "archive") {
+        await prisma.email.update({
+          where: { id: emailId },
+          data: { status: "IGNORED" }
+        });
+        return NextResponse.json({ success: true, message: "Email archived." });
+      }
+    }
+
+    if (!targetDraftId) {
+      return NextResponse.json({ error: "Missing draftId or emailId parameter" }, { status: 400 });
     }
 
     if (action === "approve") {
-      const result = await DraftService.approveDraft(draftId);
+      const result = await DraftService.approveDraft(targetDraftId);
       return NextResponse.json(result);
     } else if (action === "archive") {
-      const result = await DraftService.archiveDraft(draftId);
+      const result = await DraftService.archiveDraft(targetDraftId);
       return NextResponse.json(result);
     } else if (action === "restore") {
-      const result = await DraftService.restoreDraft(draftId);
+      const result = await DraftService.restoreDraft(targetDraftId);
       return NextResponse.json(result);
     } else {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });

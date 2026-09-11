@@ -91,22 +91,22 @@ export default function ApprovalsHub() {
 
   // 2. Mutation: Individual Approve
   const approveMutation = useMutation({
-    mutationFn: async (draftId: string) => {
+    mutationFn: async ({ draftId, emailId }: { draftId?: string; emailId: string }) => {
       const res = await fetch("/api/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draftId, action: "approve" })
+        body: JSON.stringify({ draftId, emailId, action: "approve" })
       });
-      if (!res.ok) throw new Error("Approval dispatch failed. Verify server routes.");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Approval dispatch failed. Verify server routes.");
+      }
       return res.json();
     },
     onSuccess: (data, variables) => {
       setToastStyle("success");
       setToastMessage("Approved and sent draft response successfully.");
-      setSelectedIds(prev => prev.filter(id => {
-        const item = items.find(i => i.id === id);
-        return item?.draftId !== variables;
-      }));
+      setSelectedIds(prev => prev.filter(id => id !== variables.emailId));
       // Targeted invalidation
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
       queryClient.invalidateQueries({ queryKey: ["inboxStats"] });
@@ -116,29 +116,28 @@ export default function ApprovalsHub() {
       setToastMessage(err.message || "Failed to dispatch email response.");
     },
     onSettled: () => {
-      setTimeout(() => setToastMessage(""), 4000);
+      setTimeout(() => setToastMessage(""), 5000);
     }
   });
 
   // 3. Mutation: Individual Reject
   const rejectMutation = useMutation({
-    mutationFn: async (draftId: string) => {
+    mutationFn: async ({ draftId, emailId }: { draftId?: string; emailId: string }) => {
       const res = await fetch("/api/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draftId, action: "archive" })
+        body: JSON.stringify({ draftId, emailId, action: "archive" })
       });
-      if (!res.ok) throw new Error("Reject staging update failed.");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Reject staging update failed.");
+      }
       return res.json();
     },
     onSuccess: (data, variables) => {
       setToastStyle("success");
       setToastMessage("Draft response rejected & archived.");
-      setToastMessage("Draft response rejected & archived.");
-      setSelectedIds(prev => prev.filter(id => {
-        const item = items.find((i: any) => i.id === id);
-        return item?.draftId !== variables;
-      }));
+      setSelectedIds(prev => prev.filter(id => id !== variables.emailId));
       // Targeted invalidation
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
       queryClient.invalidateQueries({ queryKey: ["inboxStats"] });
@@ -148,7 +147,7 @@ export default function ApprovalsHub() {
       setToastMessage(err.message || "Failed to reject response draft.");
     },
     onSettled: () => {
-      setTimeout(() => setToastMessage(""), 4000);
+      setTimeout(() => setToastMessage(""), 5000);
     }
   });
 
@@ -205,13 +204,17 @@ export default function ApprovalsHub() {
   });
   // 5. Mutation: Bulk Approve
   const bulkApproveMutation = useMutation({
-    mutationFn: async (draftIds: string[]) => {
-      for (const draftId of draftIds) {
-        await fetch("/api/drafts", {
+    mutationFn: async (selectedItems: any[]) => {
+      for (const item of selectedItems) {
+        const res = await fetch("/api/drafts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ draftId, action: "approve" })
+          body: JSON.stringify({ draftId: item.draftId, emailId: item.id, action: "approve" })
         });
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to approve draft for ${item.sender || item.email}`);
+        }
       }
     },
     onSuccess: () => {
@@ -227,7 +230,7 @@ export default function ApprovalsHub() {
       setToastMessage(err.message || "Failed to execute bulk approval dispatches.");
     },
     onSettled: () => {
-      setTimeout(() => setToastMessage(""), 4000);
+      setTimeout(() => setToastMessage(""), 5000);
     }
   });
 
@@ -321,13 +324,13 @@ export default function ApprovalsHub() {
   };
 
   const handleApprove = (item: any) => {
-    if (!item.draftId || approveMutation.isPending) return;
-    approveMutation.mutate(item.draftId);
+    if (approveMutation.isPending) return;
+    approveMutation.mutate({ draftId: item.draftId, emailId: item.id });
   };
 
   const handleReject = (item: any) => {
-    if (!item.draftId || rejectMutation.isPending) return;
-    rejectMutation.mutate(item.draftId);
+    if (rejectMutation.isPending) return;
+    rejectMutation.mutate({ draftId: item.draftId, emailId: item.id });
   };
 
   const handleStartEdit = (id: string, initialDraft: string) => {
@@ -342,10 +345,10 @@ export default function ApprovalsHub() {
 
   const handleBulkApprove = () => {
     if (selectedIds.length === 0 || bulkApproveMutation.isPending) return;
-    const draftIds = selectedIds
-      .map(id => items.find((i: any) => i.id === id)?.draftId)
-      .filter(Boolean) as string[];
-    bulkApproveMutation.mutate(draftIds);
+    const selectedItemObjs = selectedIds
+      .map(id => items.find((i: any) => i.id === id))
+      .filter(Boolean);
+    bulkApproveMutation.mutate(selectedItemObjs);
   };
 
   return (
@@ -687,7 +690,7 @@ export default function ApprovalsHub() {
                             disabled={approveMutation.isPending || rejectMutation.isPending}
                             className="py-2 rounded-xl text-xs font-semibold border border-rose-500/10 hover:bg-rose-500/5 text-slate-400 hover:text-rose-400 transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                           >
-                            {rejectMutation.isPending && rejectMutation.variables === item.draftId ? (
+                            {rejectMutation.isPending && rejectMutation.variables?.emailId === item.id ? (
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                               <>
@@ -701,7 +704,7 @@ export default function ApprovalsHub() {
                           disabled={approveMutation.isPending || rejectMutation.isPending}
                           className="w-full py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center justify-center gap-1.5 shadow-md shadow-indigo-500/15 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
                         >
-                          {approveMutation.isPending && approveMutation.variables === item.draftId ? (
+                          {approveMutation.isPending && approveMutation.variables?.emailId === item.id ? (
                             <>
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Dispatching...
                             </>

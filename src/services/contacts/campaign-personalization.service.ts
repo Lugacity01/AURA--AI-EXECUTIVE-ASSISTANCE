@@ -1,12 +1,7 @@
 import { prisma } from "../../lib/prisma";
 import { CampaignRecipientStatus, CampaignStatus } from "@prisma/client";
-import OpenAI from "openai";
+import { createAICompletion } from "@/lib/openai-client";
 import { replaceContactPlaceholders } from "@/lib/font-sanitizer";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_API_KEY?.startsWith('sk-or') ? 'https://openrouter.ai/api/v1' : undefined
-});
 
 export class CampaignPersonalizationService {
   /**
@@ -231,8 +226,7 @@ Generate the JSON object:`;
 
     for (const model of modelsToTry) {
       try {
-        const response = await openai.chat.completions.create({
-          model,
+        const response = await createAICompletion({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
@@ -358,8 +352,7 @@ Generate the JSON object:`;
 
         for (const model of masterModelsToTry) {
           try {
-            const response = await openai.chat.completions.create({
-              model,
+            const response = await createAICompletion({
               messages: [
                 {
                   role: "system",

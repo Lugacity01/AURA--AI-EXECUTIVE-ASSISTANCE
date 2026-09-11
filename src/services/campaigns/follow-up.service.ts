@@ -1,12 +1,7 @@
 import { prisma } from "../../lib/prisma";
 import { CampaignStatus, CampaignRecipientStatus, FollowUpType, Prisma } from "@prisma/client";
 import { CampaignQueueService } from "../contacts/campaign-queue.service";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_API_KEY?.startsWith('sk-or') ? 'https://openrouter.ai/api/v1' : undefined
-});
+import { createAICompletion } from "@/lib/openai-client";
 
 export class FollowUpService {
   /**
@@ -202,8 +197,7 @@ Recipient Context:
 Write the follow-up email naturally referencing the previous email if necessary.
 `;
 
-        const response = await openai.chat.completions.create({
-          model: process.env.OPENAI_CHAT_MODEL || "gpt-4o",
+        const response = await createAICompletion({
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt },

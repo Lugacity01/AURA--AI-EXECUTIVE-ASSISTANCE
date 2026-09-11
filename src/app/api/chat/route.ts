@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import OpenAI from "openai";
+import { createAICompletion } from "@/lib/openai-client";
 
 export async function POST(request: Request) {
   const session = await auth.api.getSession({
@@ -12,11 +12,6 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || "",
-    baseURL: "https://openrouter.ai/api/v1",
-  });
 
   try {
     const { text } = await request.json();
@@ -54,8 +49,7 @@ Answer user queries accurately by analyzing the database context provided above.
 If the query asks to summarize emails, write drafts, explain risk factors, or retrieve info, formulate your answer directly based on this data.
 Keep your response concise, professional, and clear. Use markdown bolding and bullet lists for readability.`;
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_CHAT_MODEL || "google/gemini-2.0-flash-lite-preview-02-05:free",
+    const completion = await createAICompletion({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: text }

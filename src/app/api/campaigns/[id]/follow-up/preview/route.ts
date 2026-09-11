@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_API_KEY?.startsWith('sk-or') ? 'https://openrouter.ai/api/v1' : undefined
-});
+import { createAICompletion } from "@/lib/openai-client";
 
 export async function POST(
   request: Request,
@@ -72,8 +67,7 @@ Body:
 ${originalBody}
 `;
 
-    const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_CHAT_MODEL || "gpt-4o",
+    const response = await createAICompletion({
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

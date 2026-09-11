@@ -17,7 +17,7 @@ export class CampaignService {
   }
 
   static async getCampaignById(campaignId: string, userId: string) {
-    return prisma.campaign.findUnique({
+    const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId, userId },
       include: {
         recipients: {
@@ -27,6 +27,22 @@ export class CampaignService {
         template: true
       }
     });
+
+    if (!campaign) return null;
+
+    // Dynamically calculate live real-time recipient stats from DB recipient rows
+    const totalRecipients = campaign.recipients.length > 0 ? campaign.recipients.length : (campaign.totalRecipients || 0);
+    const sentCount = campaign.recipients.filter(r => r.sendStatus === "SENT").length;
+    const failedCount = campaign.recipients.filter(r => r.sendStatus === "FAILED").length;
+    const pendingCount = campaign.recipients.filter(r => r.sendStatus === "PENDING").length;
+
+    return {
+      ...campaign,
+      totalRecipients,
+      emailsSent: sentCount,
+      failedRecipients: failedCount,
+      pendingRecipients: pendingCount
+    };
   }
 
   static async createCampaign(userId: string, data: Omit<Prisma.CampaignCreateInput, "userId" | "id" | "status">) {

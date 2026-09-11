@@ -159,7 +159,7 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     let interval: any = null;
 
-    if (campaign?.status === 'GENERATING' || campaign?.status === 'SENDING') {
+    if (campaign?.status === 'GENERATING' || campaign?.status === 'SENDING' || isSending) {
       interval = setInterval(() => {
         fetchCampaignDetails();
       }, 2000);
@@ -167,7 +167,7 @@ export default function CampaignDetailPage() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [campaign?.status, fetchCampaignDetails]);
+  }, [campaign?.status, isSending, fetchCampaignDetails]);
 
   const handleGeneratePreview = async () => {
     setIsGenerating(true);

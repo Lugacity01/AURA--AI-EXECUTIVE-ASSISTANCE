@@ -2,7 +2,10 @@ import OpenAI from "openai";
 
 export function getAIClient() {
   const apiKey = process.env.OPENAI_API_KEY || "";
-  const isOpenRouter = apiKey.startsWith("sk-or");
+  const isOpenRouter =
+    apiKey.startsWith("sk-or") ||
+    Boolean(process.env.OPENAI_BASE_URL?.includes("openrouter")) ||
+    Boolean(process.env.OPENAI_CHAT_MODEL?.includes("/"));
 
   return new OpenAI({
     apiKey,
@@ -17,19 +20,29 @@ export async function createAICompletion(options: {
 }) {
   const openai = getAIClient();
   const apiKey = process.env.OPENAI_API_KEY || "";
-  const isOpenRouter = apiKey.startsWith("sk-or");
+  const isOpenRouter =
+    apiKey.startsWith("sk-or") ||
+    Boolean(process.env.OPENAI_BASE_URL?.includes("openrouter")) ||
+    Boolean(process.env.OPENAI_CHAT_MODEL?.includes("/"));
 
-  // Determine priority model stack
-  const primaryModel =
-    options.model ||
-    process.env.OPENAI_CHAT_MODEL ||
-    (isOpenRouter ? "google/gemini-2.0-flash-001" : "gpt-4o");
+  // Clean, provider-safe model lists
+  const defaultModel = isOpenRouter ? "openai/gpt-4o-mini" : "gpt-4o-mini";
+  const primaryModel = options.model || process.env.OPENAI_CHAT_MODEL || defaultModel;
 
-  const fallbackModels = isOpenRouter
-    ? ["google/gemini-2.0-flash-001", "meta-llama/llama-3.3-70b-instruct", "gpt-4o-mini"]
-    : ["gpt-4o-mini", "gpt-3.5-turbo"];
+  const rawCandidates = isOpenRouter
+    ? [primaryModel, "openai/gpt-4o-mini", "meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o"]
+    : [primaryModel, "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
 
-  const candidateModels = Array.from(new Set([primaryModel, ...fallbackModels]));
+  // Filter models: if NOT openrouter, remove any slashed model IDs (like google/...) that cause 404 on OpenAI
+  const candidateModels = Array.from(
+    new Set(
+      rawCandidates.filter((m) => {
+        if (!m) return false;
+        if (!isOpenRouter && m.includes("/")) return false;
+        return true;
+      })
+    )
+  );
 
   let lastError: any = null;
 
@@ -51,15 +64,21 @@ export async function createAICompletion(options: {
       console.warn(`[AI Client Error with model ${model}]:`, err.message || err);
       lastError = err;
 
-      // If it's a 429 or provider error, try next fallback model
-      if (err.status === 429 || /429|rate|quota|Provider returned error|too many requests/i.test(err.message || "")) {
+      // If error is 404 (model not found) or 429 (rate limit / quota), try next candidate
+      if (
+        err.status === 429 ||
+        err.status === 404 ||
+        /429|404|rate|quota|Provider returned error|too many requests|No endpoints found/i.test(
+          err.message || ""
+        )
+      ) {
         continue;
       }
 
-      // If error is not a 429, break and throw immediately
+      // Break on other errors
       throw err;
     }
   }
 
-  throw lastError || new Error("429 Provider returned error: AI service quota or rate limit exceeded.");
+  throw lastError || new Error("AI service temporary error. Please try again in a moment.");
 }

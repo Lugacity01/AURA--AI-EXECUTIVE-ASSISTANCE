@@ -39,23 +39,31 @@ export async function POST(
       }
     });
 
-    // Reset failed recipients back to PENDING if user wants to retry sending
+    // Reset failed recipients back to PENDING and APPROVED so user can retry sending
     await prisma.campaignRecipient.updateMany({
       where: {
         campaignId: id,
-        approvalStatus: "APPROVED",
         sendStatus: "FAILED"
       },
       data: {
+        approvalStatus: "APPROVED",
         sendStatus: "PENDING",
         failedReason: null
       }
     });
 
-    // Reset campaign status to SENDING
+    // Recalculate accurate counts directly from DB
+    const sentCount = await prisma.campaignRecipient.count({ where: { campaignId: id, sendStatus: "SENT" } });
+    const failedCount = await prisma.campaignRecipient.count({ where: { campaignId: id, sendStatus: "FAILED" } });
+
+    // Reset campaign status to SENDING and update counts
     await prisma.campaign.update({
       where: { id },
-      data: { status: CampaignStatus.SENDING }
+      data: {
+        status: CampaignStatus.SENDING,
+        emailsSent: sentCount,
+        failedRecipients: failedCount
+      }
     });
 
     // Immediately trigger the queue background processor

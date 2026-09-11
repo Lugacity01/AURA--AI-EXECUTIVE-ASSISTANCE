@@ -7,8 +7,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
 
-export default function CampaignDetailsPage() {
-  const { id } = useParams() as { id: string };
+const safeParseJson = async (res: Response, defaultError = "Request failed") => {
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || defaultError };
+  }
+  if (!res.ok) {
+    throw new Error(data.error || data.message || defaultError);
+  }
+  return data;
+};
+
+export default function CampaignDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
   const router = useRouter();
 
   const [campaign, setCampaign] = useState<any>(null);
@@ -18,10 +33,10 @@ export default function CampaignDetailsPage() {
   // Follow-up modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [followUpType, setFollowUpType] = useState("REMINDER");
-  const [recipientFilter, setRecipientFilter] = useState("PENDING_RESPONSE");
+  const [recipientFilter, setRecipientFilter] = useState("ALL");
   const [instructions, setInstructions] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   const [includeMeetLink, setIncludeMeetLink] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Preview State
   const [hasPreview, setHasPreview] = useState(false);
@@ -64,6 +79,7 @@ export default function CampaignDetailsPage() {
   const [masterPdfLineHeight, setMasterPdfLineHeight] = useState<number>(1.4);
   const [masterPdfAlignment, setMasterPdfAlignment] = useState<"LEFT" | "CENTER" | "RIGHT" | "JUSTIFY">("LEFT");
   const [masterDraftUseAi, setMasterDraftUseAi] = useState(true);
+  const [masterContentLength, setMasterContentLength] = useState<"SHORT" | "MEDIUM" | "LONG">("MEDIUM");
   const [isSavingMasterDraft, setIsSavingMasterDraft] = useState(false);
 
   // Stuck state tracking
@@ -84,9 +100,7 @@ export default function CampaignDetailsPage() {
         fetch(`/api/campaigns/${id}/follow-ups?t=${timestamp}`, { cache: 'no-store' })
       ]);
 
-      if (!campRes.ok) throw new Error("Failed to fetch campaign");
-
-      const data = await campRes.json();
+      const data = await safeParseJson(campRes, "Failed to fetch campaign");
 
       // Check for stalled progress
       if (data.status === 'SENDING' && data.totalRecipients > 0) {
@@ -115,7 +129,7 @@ export default function CampaignDetailsPage() {
       setCampaign(data);
 
       if (fupRes.ok) {
-        const followUpsData = await fupRes.json();
+        const followUpsData = await safeParseJson(fupRes, "Failed to fetch follow-ups");
         setFollowUps(followUpsData);
       }
 
@@ -123,7 +137,7 @@ export default function CampaignDetailsPage() {
         try {
           const contactsRes = await fetch("/api/contacts?limit=100", { cache: 'no-store' });
           if (contactsRes.ok) {
-            const cData = await contactsRes.json();
+            const cData = await safeParseJson(contactsRes, "Failed to fetch contacts");
             setContacts(cData.contacts || []);
           }
         } catch (cErr) {
@@ -141,9 +155,11 @@ export default function CampaignDetailsPage() {
     fetchCampaignDetails();
   }, [fetchCampaignDetails]);
 
+  // Polling mechanism while campaign is generating or sending
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (campaign?.status === 'SENDING' || campaign?.status === 'GENERATING') {
+    let interval: any = null;
+
+    if (campaign?.status === 'GENERATING' || campaign?.status === 'SENDING') {
       interval = setInterval(() => {
         fetchCampaignDetails();
       }, 2000);
@@ -166,12 +182,7 @@ export default function CampaignDetailsPage() {
         })
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to generate preview");
-      }
-
-      const { subject, body } = await res.json();
+      const { subject, body } = await safeParseJson(res, "Failed to generate preview");
       setPreviewSubject(subject);
       setPreviewBody(body);
       setHasPreview(true);
@@ -199,10 +210,7 @@ export default function CampaignDetailsPage() {
         })
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create follow-up");
-      }
+      await safeParseJson(res, "Failed to create follow-up");
 
       // Automatically close modal and refresh
       setIsModalOpen(false);
@@ -239,14 +247,12 @@ export default function CampaignDetailsPage() {
           pdfFontSize: masterPdfFontSize,
           pdfLineHeight: masterPdfLineHeight,
           pdfAlignment: masterPdfAlignment,
+          contentLength: masterContentLength,
           useAi: masterDraftUseAi
         })
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to regenerate campaign");
-      }
+      await safeParseJson(res, "Failed to regenerate campaign");
 
       showToast("Draft updated and regeneration started!");
       setIsMasterDraftModalOpen(false);
@@ -267,15 +273,13 @@ export default function CampaignDetailsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}) // empty body means immediate send
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to start campaign");
-      }
+      await safeParseJson(res, "Failed to start campaign");
       showToast("Campaign has been dispatched to the queue!");
       fetchCampaignDetails();
     } catch (err: any) {
+      console.error("[Campaign Send Error]:", err);
       setError(err.message);
-      showToast("Error starting campaign");
+      showToast("Error starting campaign: " + err.message);
     } finally {
       setIsSending(false);
     }
@@ -286,15 +290,13 @@ export default function CampaignDetailsPage() {
     setError("");
     try {
       const res = await fetch(`/api/campaigns/${id}/retry`, { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to retry campaign");
-      }
+      await safeParseJson(res, "Failed to retry campaign");
       showToast("Failed recipients have been requeued!");
       fetchCampaignDetails();
     } catch (err: any) {
+      console.error("[Campaign Retry Error]:", err);
       setError(err.message);
-      showToast("Error retrying failed recipients");
+      showToast("Error retrying failed recipients: " + err.message);
     } finally {
       setIsSending(false);
     }
@@ -305,15 +307,13 @@ export default function CampaignDetailsPage() {
     setError("");
     try {
       const res = await fetch(`/api/campaigns/${id}/resume`, { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to resume campaign");
-      }
+      await safeParseJson(res, "Failed to resume campaign");
       showToast("Background process restarted!");
       fetchCampaignDetails();
     } catch (err: any) {
+      console.error("[Campaign Force Resume Error]:", err);
       setError(err.message);
-      showToast("Error resuming campaign");
+      showToast("Error resuming campaign: " + err.message);
     } finally {
       setIsSending(false);
     }
@@ -331,15 +331,12 @@ export default function CampaignDetailsPage() {
     }
   }, []);
 
-  const handleGoogleReauth = async () => {
+  const handleGoogleReauth = () => {
     try {
       showToast("Redirecting to Google Re-authentication...");
       const redirectUrl = new URL(window.location.href);
       redirectUrl.searchParams.set("autoResume", "true");
-      await signIn.social({
-        provider: "google",
-        callbackURL: redirectUrl.toString()
-      });
+      window.location.href = `/api/gmail/connect?redirect=${encodeURIComponent(redirectUrl.pathname + redirectUrl.search)}`;
     } catch (err: any) {
       showToast("Re-authentication failed: " + err.message);
     }
@@ -359,7 +356,7 @@ export default function CampaignDetailsPage() {
           approvalStatus: previewRecipient.approvalStatus,
         })
       });
-      if (!res.ok) throw new Error("Failed to save draft");
+      await safeParseJson(res, "Failed to save draft");
       showToast("Draft updated successfully!");
       setPreviewRecipient(null);
       fetchCampaignDetails();
@@ -383,12 +380,8 @@ export default function CampaignDetailsPage() {
           useAi: useAiForNew
         })
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to add recipients");
-      }
-      const data = await res.json();
-      showToast(data.message);
+      const data = await safeParseJson(res, "Failed to add recipients");
+      showToast(data.message || "Recipients added successfully!");
       setIsAddModalOpen(false);
       setSelectedContactIds([]);
       fetchCampaignDetails();
@@ -407,7 +400,7 @@ export default function CampaignDetailsPage() {
       const res = await fetch(`/api/campaigns/${id}/recipients/${recipientToRemove}`, {
         method: "DELETE"
       });
-      if (!res.ok) throw new Error("Failed to remove recipient");
+      await safeParseJson(res, "Failed to remove recipient");
       showToast("Recipient removed.");
       setRecipientToRemove(null);
       fetchCampaignDetails();
@@ -467,7 +460,7 @@ export default function CampaignDetailsPage() {
                     'bg-blue-500/10 text-blue-400'
                 }`}>
                 {campaign.status === 'SENDING' && campaign.totalRecipients > 0 ?
-                  `SENDING (${Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100)}%)`
+                  `SENDING (${Math.min(100, Math.round((((campaign.emailsSent || 0) + (campaign.failedRecipients || 0)) / campaign.totalRecipients) * 100))}%)`
                   : campaign.status}
               </span>
             </h1>
@@ -511,6 +504,7 @@ export default function CampaignDetailsPage() {
                   setMasterPdfFontSize(campaign?.pdfFontSize ?? 11);
                   setMasterPdfLineHeight(campaign?.pdfLineHeight ?? 1.4);
                   setMasterPdfAlignment(campaign?.pdfAlignment || "LEFT");
+                  setMasterContentLength((campaign?.contentLength as any) || "MEDIUM");
                   setIsMasterDraftModalOpen(true);
                 }}
                 className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -525,7 +519,15 @@ export default function CampaignDetailsPage() {
               <UserPlus className="w-4 h-4 text-emerald-400" /> Add Recipients
             </button>
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setFollowUpType("REMINDER");
+                setHasPreview(false);
+                setPreviewSubject("");
+                setPreviewBody("");
+                setInstructions("");
+                setError(null);
+                setIsModalOpen(true);
+              }}
               className="bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-500/20"
             >
               <Plus className="w-4 h-4" /> Create Follow-up
@@ -533,7 +535,13 @@ export default function CampaignDetailsPage() {
           </div>
         )}
         {(campaign.status === 'SENDING' || campaign.status === 'FAILED') && (
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <button
+              onClick={handleGoogleReauth}
+              className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2 rounded-full text-sm transition flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
+            </button>
             <button
               onClick={handleForceResume}
               disabled={isSending}
@@ -570,6 +578,7 @@ export default function CampaignDetailsPage() {
                   setMasterPdfFontSize(campaign?.pdfFontSize ?? 11);
                   setMasterPdfLineHeight(campaign?.pdfLineHeight ?? 1.4);
                   setMasterPdfAlignment(campaign?.pdfAlignment || "LEFT");
+                  setMasterContentLength((campaign?.contentLength as any) || "MEDIUM");
                   setIsMasterDraftModalOpen(true);
                 }}
                 className="bg-white/5 border border-white/10 text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-white/10 transition flex items-center gap-2"
@@ -601,7 +610,7 @@ export default function CampaignDetailsPage() {
         {(() => {
           const isGoogleAuthError = (str: string | null | undefined) => {
             if (!str) return false;
-            return /Google|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token/i.test(str);
+            return /Google|Gmail|Unauthorized|401|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token/i.test(str);
           };
 
           const hasAuthError = (error && isGoogleAuthError(error)) ||
@@ -759,6 +768,11 @@ export default function CampaignDetailsPage() {
                             }`}>
                             {recipient.sendStatus}
                           </span>
+                          {recipient.failedReason && (
+                            <div className="text-[11px] text-red-400/90 font-mono mt-1 max-w-xs truncate" title={recipient.failedReason}>
+                              ⚠️ {recipient.failedReason}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-4">
@@ -843,6 +857,11 @@ export default function CampaignDetailsPage() {
                         {recipient.sendStatus === 'SENT' ? 'Sent' : recipient.sendStatus === 'FAILED' ? 'Failed' : 'Queued'}
                       </span>
                     </div>
+                    {recipient.failedReason && (
+                      <p className="text-[11px] text-red-400/90 font-mono mt-1" title={recipient.failedReason}>
+                        ⚠️ {recipient.failedReason}
+                      </p>
+                    )}
                   </div>
                 ))
               )}
@@ -854,18 +873,18 @@ export default function CampaignDetailsPage() {
 
       {/* Follow-up Creation Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col">
-            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-xl w-full max-h-[85vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col my-auto">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-medium text-white">Create Follow-up</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/10 transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 flex flex-col gap-6 overflow-y-auto">
+            <div className="p-6 flex flex-col gap-5 overflow-y-auto flex-1 min-h-0">
               {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2 shrink-0">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                   <p>{error}</p>
                 </div>
@@ -877,7 +896,14 @@ export default function CampaignDetailsPage() {
                   {['REMINDER', 'FOLLOW_UP', 'CUSTOM'].map(type => (
                     <button
                       key={type}
-                      onClick={() => { setFollowUpType(type); setHasPreview(false); }}
+                      onClick={() => {
+                        setFollowUpType(type);
+                        setHasPreview(false);
+                        setPreviewSubject("");
+                        setPreviewBody("");
+                        setInstructions("");
+                        setError(null);
+                      }}
                       className={`py-2 px-3 rounded-lg text-sm font-medium border transition ${followUpType === type
                         ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
                         : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
@@ -898,9 +924,8 @@ export default function CampaignDetailsPage() {
                 >
                   <option value="ALL">All Recipients</option>
                   <option value="PENDING_RESPONSE">Pending Response (No Reply)</option>
-                  {/* Custom selection would require a multi-select, keeping it simple for now */}
                 </select>
-                <p className="text-xs text-zinc-500 mt-2">
+                <p className="text-xs text-zinc-500 mt-1.5">
                   {recipientFilter === 'PENDING_RESPONSE'
                     ? "Only targets recipients who were sent the initial email but haven't replied."
                     : "Targets everyone from the original campaign."}
@@ -926,7 +951,7 @@ export default function CampaignDetailsPage() {
               {hasPreview ? (
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">Generated Subject</label>
+                    <label className="block text-sm font-medium text-zinc-300 mb-1.5">Generated Subject</label>
                     <input
                       type="text"
                       className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500"
@@ -935,18 +960,18 @@ export default function CampaignDetailsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">Generated Body</label>
+                    <label className="block text-sm font-medium text-zinc-300 mb-1.5">Generated Body</label>
                     <textarea
-                      className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-48"
+                      className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-36 sm:h-40 min-h-[100px] resize-y"
                       value={previewBody}
                       onChange={(e) => setPreviewBody(e.target.value)}
                     />
-                    <p className="text-xs text-zinc-500 mt-2">
+                    <p className="text-xs text-zinc-500 mt-1.5">
                       You can edit this draft before sending. Note that [Name] will be replaced dynamically.
                     </p>
                   </div>
 
-                  <div className="mt-2 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setIsIntelligentMode(!isIntelligentMode)}>
+                  <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex gap-4 items-start cursor-pointer hover:bg-indigo-500/10 transition" onClick={() => setIsIntelligentMode(!isIntelligentMode)}>
                     <div className="pt-0.5">
                       <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isIntelligentMode ? "bg-indigo-500 border-indigo-500" : "border-zinc-500"}`}>
                         {isIntelligentMode && <CheckCircle2 className="w-3 h-3 text-white" />}
@@ -964,7 +989,7 @@ export default function CampaignDetailsPage() {
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-2">Additional AI Instructions</label>
                   <textarea
-                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 resize-none h-32"
+                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 resize-y h-28 min-h-[80px]"
                     placeholder="e.g. Mention that seats are limited. Keep the tone friendly. Reference the previous invitation."
                     value={instructions}
                     onChange={(e) => setInstructions(e.target.value)}
@@ -973,7 +998,7 @@ export default function CampaignDetailsPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
+            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3 shrink-0">
               <button
                 onClick={() => { setIsModalOpen(false); setHasPreview(false); }}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition"
@@ -1120,16 +1145,16 @@ export default function CampaignDetailsPage() {
 
       {/* Recipient Preview Modal */}
       {previewRecipient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col">
-            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl max-w-2xl w-full max-h-[85vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col my-auto">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
               <h2 className="text-lg font-medium text-white">Email to {previewRecipient.contact?.name || "Recipient"}</h2>
               <button onClick={() => setPreviewRecipient(null)} className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/10 transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[70vh]">
+            <div className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Subject</label>
                 {previewRecipient.sendStatus === 'SENT' ? (
@@ -1154,7 +1179,7 @@ export default function CampaignDetailsPage() {
                   </div>
                 ) : (
                   <textarea
-                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-48 resize-none"
+                    className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 h-36 sm:h-40 min-h-[100px] resize-y"
                     value={editBody}
                     onChange={(e) => setEditBody(e.target.value)}
                   />
@@ -1174,7 +1199,7 @@ export default function CampaignDetailsPage() {
                     </div>
                   ) : (
                     <textarea
-                      className="w-full bg-[#0F0F12] border border-indigo-500/30 rounded-lg px-4 py-3 text-white text-xs focus:outline-none focus:border-indigo-500 min-h-[120px] resize-y font-sans"
+                      className="w-full bg-[#0F0F12] border border-indigo-500/30 rounded-lg px-4 py-3 text-white text-xs focus:outline-none focus:border-indigo-500 min-h-[100px] h-28 resize-y font-sans"
                       value={editPdfContent}
                       onChange={(e) => setEditPdfContent(e.target.value)}
                       placeholder="Custom text to render inside the attached PDF file..."
@@ -1185,7 +1210,7 @@ export default function CampaignDetailsPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3">
+            <div className="px-6 py-4 border-t border-white/10 bg-[#0F0F12] flex items-center justify-end gap-3 shrink-0">
               <button
                 onClick={() => setPreviewRecipient(null)}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition border border-white/10"
@@ -1227,12 +1252,69 @@ export default function CampaignDetailsPage() {
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Master Email Draft / Base Prompt</label>
-                <textarea
-                  value={masterDraftText}
-                  onChange={e => setMasterDraftText(e.target.value)}
-                  placeholder="Write your email draft or AI instructions here..."
-                  className="w-full h-48 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none text-sm"
-                />
+                {/* Master Draft Textarea Container with Integrated Length Toolbar */}
+                <div className="bg-black/50 border border-white/10 rounded-xl overflow-hidden focus-within:border-indigo-500/50 transition shadow-inner">
+                  <textarea
+                    value={masterDraftText}
+                    onChange={e => setMasterDraftText(e.target.value)}
+                    placeholder="Write your email draft or AI instructions here..."
+                    className="w-full h-44 bg-transparent px-4 py-3 text-white focus:outline-none resize-none text-sm leading-relaxed"
+                  />
+
+                  {/* Integrated Length Preference Toolbar */}
+                  <div className="border-t border-white/10 bg-white/[0.02] px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 text-zinc-400">
+                      <span className="text-sm">📏</span>
+                      <span className="font-medium text-zinc-300">Length:</span>
+                      <span className="text-zinc-400 text-[11px]">
+                        {masterContentLength === "SHORT" && "1–2 paragraphs (~50–100 words)"}
+                        {masterContentLength === "MEDIUM" && "2–3 paragraphs (~120–180 words)"}
+                        {masterContentLength === "LONG" && "3–4 paragraphs (~250–350 words)"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-black/60 p-1 rounded-lg border border-white/10 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setMasterContentLength("SHORT")}
+                        title="Short: 1–2 short paragraphs (~50–100 words)"
+                        className={`px-2.5 py-1 rounded-md transition font-medium text-[11px] flex items-center gap-1 ${
+                          masterContentLength === "SHORT"
+                            ? "bg-indigo-600 text-white shadow"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        Short
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMasterContentLength("MEDIUM")}
+                        title="Medium (Default): 2–3 balanced paragraphs (~120–180 words)"
+                        className={`px-2.5 py-1 rounded-md transition font-medium text-[11px] flex items-center gap-1 ${
+                          masterContentLength === "MEDIUM"
+                            ? "bg-indigo-600 text-white shadow"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        Medium <span className="text-[9px] opacity-75 font-mono">(Default)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMasterContentLength("LONG")}
+                        title="Long: 3–4 detailed paragraphs (~250–350 words)"
+                        className={`px-2.5 py-1 rounded-md transition font-medium text-[11px] flex items-center gap-1 ${
+                          masterContentLength === "LONG"
+                            ? "bg-indigo-600 text-white shadow"
+                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        Long
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="pt-4 border-t border-white/10 space-y-4">

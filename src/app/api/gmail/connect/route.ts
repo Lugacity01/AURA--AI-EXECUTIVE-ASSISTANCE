@@ -12,15 +12,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
+  const { searchParams } = new URL(request.url);
+  const redirectPath = searchParams.get("redirect") || "/dashboard/integrations";
+
   const state = crypto.randomBytes(32).toString("hex");
   
-  // Store the state in a secure cookie for CSRF validation
+  // Store the state and return redirect path in secure cookies
   const cookieStore = await cookies();
   cookieStore.set("gmail_oauth_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 600, // 10 minutes
+    maxAge: 600,
+    path: "/"
+  });
+  cookieStore.set("gmail_oauth_redirect", redirectPath, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 600,
     path: "/"
   });
 

@@ -341,12 +341,24 @@ export default function DashboardLayout({
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Sync lights */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-semibold tracking-wider uppercase font-mono select-none">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-              Sync Active
-            </div>
+          <div className="flex items-center gap-3">
+            {gmailRevoked ? (
+              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium shadow-lg shadow-amber-500/10 animate-pulse">
+                <span className="text-sm">🔑</span>
+                <span className="hidden sm:inline font-semibold">Google Re-authentication Required</span>
+                <a
+                  href={`/api/gmail/connect?redirect=${encodeURIComponent(pathname)}`}
+                  className="bg-amber-500 hover:bg-amber-400 text-black px-3 py-1 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Reconnect 1-Click</span>
+                </a>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-semibold tracking-wider uppercase font-mono select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                Sync Active
+              </div>
+            )}
 
             <button className="p-2 rounded-xl border border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.04] text-slate-400 hover:text-white transition-all relative">
               <Bell className="w-4 h-4" />

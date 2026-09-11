@@ -27,7 +27,8 @@ export async function PUT(
       pdfContentHeight,
       pdfFontSize,
       pdfLineHeight,
-      pdfAlignment
+      pdfAlignment,
+      contentLength
     } = await request.json();
 
     // Verify campaign belongs to user
@@ -49,11 +50,12 @@ export async function PUT(
 
     const promptText = basePrompt !== undefined ? basePrompt : (campaign.description || "");
 
-    // Update campaign PDF settings, description, and template atomically
+    // Update campaign PDF settings, description, template, and contentLength atomically
     await prisma.campaign.update({
       where: { id: campaignId },
       data: {
         description: promptText,
+        contentLength: contentLength || campaign.contentLength || "MEDIUM",
         pdfEnabled: isPdfEnabled,
         pdfFilename: pdfFilename || "Attachment_Document.pdf",
         pdfContentSource: pdfContentSource || "EMAIL_BODY",

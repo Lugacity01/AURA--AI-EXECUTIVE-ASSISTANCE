@@ -94,8 +94,12 @@ export async function GET(request: NextRequest) {
       scope: tokens.scope,
     });
 
-    // 5. Redirect back to settings integrations dashboard
-    return NextResponse.redirect(new URL("/dashboard/integrations", request.url));
+    // Read saved redirect path or fallback to integrations page
+    const savedRedirect = cookieStore.get("gmail_oauth_redirect")?.value || "/dashboard/integrations";
+    cookieStore.delete("gmail_oauth_redirect");
+
+    // 5. Redirect back to original dashboard page
+    return NextResponse.redirect(new URL(savedRedirect, request.url));
   } catch (err) {
     console.error("Google OAuth Callback Error:", err);
     return NextResponse.json({ error: "Authentication callback error occurred" }, { status: 500 });

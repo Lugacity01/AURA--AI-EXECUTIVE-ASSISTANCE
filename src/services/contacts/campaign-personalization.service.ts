@@ -3,7 +3,7 @@ import { CampaignRecipientStatus, CampaignStatus } from "@prisma/client";
 import OpenAI from "openai";
 import { replaceContactPlaceholders } from "@/lib/font-sanitizer";
 
-const openai = new OpenAI({ 
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: process.env.OPENAI_API_KEY?.startsWith('sk-or') ? 'https://openrouter.ai/api/v1' : undefined
 });
@@ -47,14 +47,62 @@ export class CampaignPersonalizationService {
 
       // 3. In Recipient mode, if greeting uses [Name] or raw placeholder, replace with contact name
       if (!isMasterTemplate && (currentGreetingName.startsWith("[") || currentLower === "there")) {
-        return body.replace(salutationRegex, `${prefix}${targetName}${punctuation}`);
+        body = body.replace(salutationRegex, `${prefix}${targetName}${punctuation}`);
       }
     } else {
-      // If there's no recognizable greeting line at the top, prepend one
-      return `Dear ${targetName},\n\n${body}`;
+      // Fix opening greeting if missing
+      body = `Dear ${targetName},\n\n${body}`;
+    }
+
+    // Clean old sender names like Adesina Yinka Abeeb or Yinka Abeeb Adesina
+    body = body.replace(/Adesina\s+Yinka\s+Abeeb|Yinka\s+Abeeb\s+Adesina|Abeeb\s+Adesina/gi, "Azeez Mumeenat");
+
+    // Ensure closing signature includes "Program Manager" directly beneath "Azeez Mumeenat"
+    if (body.includes("Azeez Mumeenat") && !body.includes("Azeez Mumeenat\nProgram Manager") && !body.includes("Azeez Mumeenat\r\nProgram Manager")) {
+      body = body.replace(/Azeez\s+Mumeenat(?![\s\S]*Azeez\s+Mumeenat)/i, "Azeez Mumeenat\nProgram Manager");
+    } else if (!body.toLowerCase().includes("azeez mumeenat")) {
+      // Append signature if no sender name is present at the end
+      body = `${body.trim()}\n\nWarm regards,\n\nAzeez Mumeenat\nProgram Manager`;
     }
 
     return body;
+  }
+
+  /**
+   * Returns precise length directives based on campaign.contentLength ("SHORT", "MEDIUM", or "LONG")
+   * Default is "MEDIUM".
+   */
+  private static getContentLengthDirective(contentLength?: string | null): {
+    code: "SHORT" | "MEDIUM" | "LONG";
+    systemDirective: string;
+    userDirective: string;
+  } {
+    const normalized = (contentLength || "MEDIUM").toUpperCase().trim();
+
+    if (normalized === "SHORT" || normalized === "SMALL") {
+      return {
+        code: "SHORT",
+        systemDirective: `MANDATORY CONTENT LENGTH REQUIREMENT: SHORT (1 to 2 short paragraphs, ~50 to 100 words total).
+- Keep the message brief, direct, concise, and straight to the point.
+- Do NOT add unnecessary filler, elaborate backstory, or excessive bullet points.`,
+        userDirective: `TARGET LENGTH: SHORT (1 to 2 short paragraphs, ~50–100 words max). Be direct and concise without extra filler.`
+      };
+    } else if (normalized === "LONG" || normalized === "LENGTHY") {
+      return {
+        code: "LONG",
+        systemDirective: `MANDATORY CONTENT LENGTH REQUIREMENT: LONG (3 to 4 expanded paragraphs, ~250 to 350 words total).
+- Provide rich creative expansion, deep background context, detailed expectations, bulleted takeaways, and thorough explanations.`,
+        userDirective: `TARGET LENGTH: LONG (3 to 4 distinct, rich paragraphs/sections, ~250–350 words). Provide thorough details, background, and key takeaways.`
+      };
+    } else {
+      // Default to MEDIUM
+      return {
+        code: "MEDIUM",
+        systemDirective: `MANDATORY CONTENT LENGTH REQUIREMENT: MEDIUM (2 to 3 well-proportioned paragraphs, ~120 to 180 words total).
+- Provide clean context, essential details, and clear next steps in a balanced, articulate length. Avoid extreme brevity or unnecessary fluff.`,
+        userDirective: `TARGET LENGTH: MEDIUM (2 to 3 well-proportioned paragraphs, ~120–180 words). Provide clean context and clear next steps.`
+      };
+    }
   }
 
   /**
@@ -102,7 +150,7 @@ export class CampaignPersonalizationService {
         jobTitle: personalizationContext.jobTitle,
         department: personalizationContext.department
       });
-      
+
       // Update the context so the AI gets the processed version
       personalizationContext.basePrompt = processedPrompt;
     }
@@ -122,17 +170,21 @@ MEETING / CLASS BROADCAST DETAILS:
 
     // 2. Call the AI Pipeline via OpenAI
     const isWhatsApp = campaign.channel === "WHATSAPP";
-    
+    const lengthInfo = CampaignPersonalizationService.getContentLengthDirective((campaign as any).contentLength);
+
     const systemPrompt = `You are Aura, a world-class Executive AI Copywriter and Communication Specialist.
-Your task is to take the user's Base Prompt / Instructions and transform it into a COMPLETE, ARTICULATE, ENGAGING, HIGHLY PROFESSIONAL, AND FULLY EXPANDED EMAIL.
+Your task is to take the user's Base Prompt / Instructions and transform it into a COMPLETE, ARTICULATE, ENGAGING, HIGHLY PROFESSIONAL EMAIL.
+
+${lengthInfo.systemDirective}
 
 CRITICAL CREATIVE EXPANSION MANDATES:
-1. DEEP CREATIVE EXPANSION (DO NOT PARROT SHORT PROMPTS): Never echo brief drafts or short instructions verbatim! You MUST creatively expand and elaborate beyond the user's raw input. Add rich contextual details, explain key takeaways, why this event/topic matters, what attendees will learn or gain, practical preparation tips, and clear next steps.
-2. MULTI-PARAGRAPH STRUCTURE: Unless this is WhatsApp, the email MUST be structured into at least 3 to 4 distinct, well-written paragraphs/sections:
-   - Paragraph 1: Warm professional greeting and an engaging opening context.
-   - Paragraph 2: Comprehensive overview of the event/topic, key objectives, and why it is important.
-   - Paragraph 3: Actionable details, what to expect, or bulleted key takeaways / reminders.
-   - Paragraph 4: Encouraging closing call-to-action and professional sign-off.
+1. CREATIVE ADAPTATION (DO NOT PARROT SHORT PROMPTS VERBATIM): Never echo raw instructions line-for-line! Adapt and structure the content according to the requested length (${lengthInfo.code}). Add appropriate contextual details, explain key takeaways, why this event/topic matters, and clear next steps.
+2. PARAGRAPH STRUCTURE (${lengthInfo.code} LENGTH):
+${lengthInfo.code === "SHORT" 
+  ? "   - Paragraph 1: Warm greeting & direct statement of the core update/event.\n   - Paragraph 2: Key details or meeting time + polite call-to-action & sign-off." 
+  : lengthInfo.code === "LONG"
+  ? "   - Paragraph 1: Warm professional greeting and an engaging opening context.\n   - Paragraph 2: Comprehensive overview of the event/topic and core objectives.\n   - Paragraph 3: Detailed actionable expectations, bulleted takeaways, or preparation tips.\n   - Paragraph 4: Encouraging closing call-to-action and sign-off."
+  : "   - Paragraph 1: Warm professional greeting and an engaging opening context.\n   - Paragraph 2: Clear overview of event/topic details, time, and key objectives.\n   - Paragraph 3: Closing call-to-action and professional sign-off."}
 3. RECIPIENT SALUTATION vs SENDER SIGNATURE:
    - The opening greeting MUST address the RECIPIENT (${personalizationContext.recipientName || 'there'}). Example: "Dear ${personalizationContext.recipientName || 'there'},".
    - NEVER put the Sender's name (${personalizationContext.senderName}) in the opening greeting! The Sender (${personalizationContext.senderName}) MUST ONLY appear in the closing sign-off at the end.
@@ -156,10 +208,11 @@ Recipient Profile Context:
 - Additional Context / Notes: ${personalizationContext.notes || "None"}
 - Desired Tone: ${personalizationContext.preferredTone || "Professional & Warm"}
 - Sender Sign-off Name: ${personalizationContext.senderName}
+- Target Length: ${lengthInfo.code} (${lengthInfo.userDirective})
 
 INSTRUCTIONS:
-1. Creatively expand and rewrite the Base Prompt into a beautifully written, articulate, multi-paragraph email. Start with "Dear ${personalizationContext.recipientName || 'there'}," (or "Hi ${personalizationContext.recipientName || 'there'},").
-2. Elaborate on the context, value, expectations, and next steps so the message feels thorough and professional.
+1. Write an email conforming strictly to target length (${lengthInfo.userDirective}). Start with "Dear ${personalizationContext.recipientName || 'there'}," (or "Hi ${personalizationContext.recipientName || 'there'},").
+2. Elaborate on context, value, and next steps appropriate for ${lengthInfo.code} length.
 3. DO NOT address ${personalizationContext.senderName} in the greeting. Address ${personalizationContext.recipientName || 'there'}.
 4. Replace any raw placeholders like [Name], [Track], [Company] with real recipient data (${personalizationContext.recipientName}, ${personalizationContext.company}).
 5. Ensure the tone is ${personalizationContext.preferredTone || "Professional & Warm"}.
@@ -203,7 +256,7 @@ Generate the JSON object:`;
           // Fallback text parser if model returns plain text
           const subjectMatch = rawContent.match(/(?:Subject|Title):\s*(.+)/i);
           if (subjectMatch) subject = subjectMatch[1].trim();
-          
+
           const bodyText = rawContent.replace(/(?:Subject|Title):\s*.+/i, "").trim();
           if (bodyText) {
             body = bodyText;
@@ -253,7 +306,7 @@ Generate the JSON object:`;
   static async generateAllForCampaign(campaignId: string, userId: string, useAi: boolean = true, regenerate: boolean = false) {
     // ALWAYS reset all unsent recipients back to PENDING so AI always generates/regenerates fresh drafts
     await prisma.campaignRecipient.updateMany({
-      where: { 
+      where: {
         campaignId,
         sendStatus: { not: 'SENT' } // Reset anything that hasn't been sent yet
       },
@@ -273,7 +326,7 @@ Generate the JSON object:`;
         where: { campaignId, approvalStatus: CampaignRecipientStatus.PENDING },
         select: { id: true }
       });
-      
+
       // 1.5 Fetch User for signature
       const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       const senderName = user?.name || "User";
@@ -286,6 +339,7 @@ Generate the JSON object:`;
         const basePrompt = campaign?.template?.basePrompt || campaign?.description || "";
         masterSubject = isWhatsApp ? "" : (campaign?.title || masterSubject);
         masterBody = basePrompt;
+        const lengthInfo = CampaignPersonalizationService.getContentLengthDirective((campaign as any)?.contentLength);
 
         let meetingContext = "";
         if (campaign?.campaignType === "MEETING") {
@@ -307,21 +361,24 @@ Generate the JSON object:`;
             const response = await openai.chat.completions.create({
               model,
               messages: [
-                { 
-                  role: "system", 
-                  content: `You are Aura, an elite AI assistant. Write a polished, highly professional, and fully expanded mass message template based on the User's draft. 
+                {
+                  role: "system",
+                  content: `You are Aura, an elite AI assistant. Write a polished, professional mass message template based on the User's draft. 
                             Output exactly as a JSON object with ${isWhatsApp ? "only a 'body'" : "'subject' and 'body'"} string properties. 
                             Do not wrap in markdown or backticks. 
-                            CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings themselves. The strings should contain ONLY the actual content.
+                            CRITICAL: Do NOT include labels like "Subject:" or "Body:" inside the strings.
+
+                            ${lengthInfo.systemDirective}
+
                             ${isWhatsApp ? "This is a WhatsApp broadcast. Keep paragraphs short and conversational. Include emojis where natural. No subject line." : ""}
-                            CRITICAL CREATIVE EXPANSION & SALUTATION MANDATES:
-                            1. DEEP CREATIVE EXPANSION: Never output a brief 1-2 sentence memo! Creatively expand the user's prompt into a complete, rich, multi-paragraph message explaining the event/topic in detail, key takeaways/expectations, and why it is valuable.
+                            CRITICAL CREATIVE ADAPTATION & SALUTATION MANDATES:
+                            1. CREATIVE ADAPTATION (${lengthInfo.code} LENGTH): Structure the content strictly according to the target length (${lengthInfo.code}).
                             2. SALUTATION & PLACEHOLDERS: The opening greeting MUST start with 'Dear [Name],' or 'Hi [Name],' using '[Name]' as the recipient placeholder. Replace any raw brackets like '[]' or specific names in the user's draft greeting with 'Dear [Name],'.
                             3. SENDER VS RECIPIENT: The sender is '${senderName}'. NEVER address '${senderName}' in the opening greeting! '${senderName}' MUST ONLY appear in the closing signature at the very end.
                             ${campaign?.campaignType === "MEETING" ? "4. MEETING BROADCAST: State the class/meeting topic, scheduled time, and attendance expectations clearly." : ""}
-                            5. If the User's draft includes a signature or sign-off at the end, preserve it. If not, sign off as: ${senderName}` 
+                            5. If the User's draft includes a signature or sign-off at the end, preserve it. If not, sign off as: ${senderName}`
                 },
-                { role: "user", content: `Draft/Goal: ${basePrompt || campaign?.description || ""}${meetingContext}` }
+                { role: "user", content: `Draft/Goal: ${basePrompt || campaign?.description || ""}${meetingContext}\nTarget Length: ${lengthInfo.code} (${lengthInfo.userDirective})` }
               ]
             });
 
@@ -342,7 +399,7 @@ Generate the JSON object:`;
               // Fallback text parser if model returns plain text instead of strict JSON
               const subjectMatch = rawMaster.match(/(?:Subject|Title):\s*(.+)/i);
               if (subjectMatch) masterSubject = subjectMatch[1].trim();
-              
+
               const bodyText = rawMaster.replace(/(?:Subject|Title):\s*.+/i, "").trim();
               if (bodyText) {
                 masterBody = bodyText;
@@ -369,11 +426,11 @@ Generate the JSON object:`;
               where: { id: recipient.id },
               include: { contact: { include: { organization: true } } }
             });
-            
+
             // Replace placeholders with actual contact data
             let finalBody = replaceContactPlaceholders(masterBody, rec?.contact);
             finalBody = CampaignPersonalizationService.sanitizeSalutation(finalBody, rec?.contact?.name || "there", senderName, false);
-            
+
             // Generate PDF content for Master Template mode if PDF is enabled
             let personalizedPdfContent: string | null = null;
             if (Boolean(campaign.pdfEnabled)) {
@@ -384,7 +441,7 @@ Generate the JSON object:`;
                 personalizedPdfContent = replaceContactPlaceholders(rawPdfTemplate, rec?.contact);
               }
             }
-            
+
             await prisma.campaignRecipient.update({
               where: { id: recipient.id },
               data: {
@@ -400,7 +457,7 @@ Generate the JSON object:`;
           console.error(`Failed to generate for recipient ${recipient.id}:`, err);
           await prisma.campaignRecipient.update({
             where: { id: recipient.id },
-            data: { 
+            data: {
               approvalStatus: CampaignRecipientStatus.FAILED,
               failedReason: err instanceof Error ? err.message : "Unknown AI generation error"
             }
@@ -415,7 +472,7 @@ Generate the JSON object:`;
       });
     } catch (fatalError) {
       console.error("Fatal error during campaign generation:", fatalError);
-      
+
       // If we crashed completely, fallback to DRAFT so the user isn't stuck
       await prisma.campaign.update({
         where: { id: campaignId, userId },

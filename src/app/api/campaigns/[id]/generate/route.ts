@@ -18,24 +18,27 @@ export async function POST(
     let regenerate = false;
     let eventDate: string | undefined;
     let eventDuration: number | undefined;
+    let contentLength: string | undefined;
     try {
       const body = await request.json();
       if (body.useAi === false) useAi = false;
       if (body.regenerate === true) regenerate = true;
       if (body.eventDate) eventDate = body.eventDate;
       if (body.eventDuration) eventDuration = body.eventDuration;
+      if (body.contentLength) contentLength = body.contentLength;
     } catch (e) {
       // Body might be empty
     }
     
-    // Save event details if provided
-    if (eventDate || eventDuration) {
+    // Save campaign details if provided
+    if (eventDate || eventDuration || contentLength) {
       const { prisma } = await import("@/lib/prisma");
       await prisma.campaign.update({
         where: { id },
         data: {
           eventDate: eventDate ? new Date(eventDate) : undefined,
-          eventDuration: eventDuration
+          eventDuration: eventDuration,
+          ...(contentLength ? { contentLength } : {})
         }
       });
     }

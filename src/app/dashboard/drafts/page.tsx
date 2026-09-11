@@ -780,17 +780,25 @@ export default function DraftRevisionsHub() {
 
 // Helper to format raw markdown headers, bold texts, and bullet indents
 const parseBoldText = (text: string) => {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
+  if (!text) return "";
+  
+  // Clean up any double asterisks with inner whitespace like ** text ** -> **text**
+  let normalized = text.replace(/\*\*\s+(.*?)\s+\*\*/g, "**$1**");
+  normalized = normalized.replace(/\*\*\s+(.*?)\*\*/g, "**$1**");
+  normalized = normalized.replace(/\*\*(.*?)\s+\*\*/g, "**$1**");
+
+  const parts = normalized.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      const boldContent = part.slice(2, -2);
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      const boldContent = part.slice(2, -2).trim();
       return (
         <strong key={i} className="font-semibold text-slate-100">
           {boldContent}
         </strong>
       );
     }
-    return part;
+    // Remove any remaining stray double asterisks that couldn't be paired
+    return part.replace(/\*\*/g, "");
   });
 };
 

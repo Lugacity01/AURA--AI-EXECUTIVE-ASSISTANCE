@@ -509,11 +509,11 @@ export default function ApprovalsHub() {
                         </div>
 
                         {/* Subject */}
-                        <h4 className="text-sm font-semibold text-slate-100 font-display mb-2 truncate">{item.subject}</h4>
+                        <h4 className="text-sm font-semibold text-slate-100 font-display mb-2 truncate">{parseBoldText(item.subject)}</h4>
 
                         {/* snippet */}
                         <p className="text-xs text-slate-400 font-light mb-4 line-clamp-2 leading-relaxed font-sans">
-                          {item.snippet}
+                          {parseBoldText(item.snippet)}
                         </p>
 
                         {/* AI reason detail */}
@@ -522,7 +522,7 @@ export default function ApprovalsHub() {
                           <div>
                             <span className="text-[9px] text-slate-500 font-mono uppercase block">Why approval is required</span>
                             <p className="text-xs text-slate-300 font-light mt-0.5 leading-relaxed font-sans">
-                              {item.reason}
+                              {parseBoldText(item.reason)}
                             </p>
                           </div>
                         </div>
@@ -868,17 +868,25 @@ export default function ApprovalsHub() {
 
 // Helper to format raw markdown headers, bold texts, and bullet indents
 const parseBoldText = (text: string) => {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
+  if (!text) return "";
+  
+  // Clean up any double asterisks with inner whitespace like ** text ** -> **text**
+  let normalized = text.replace(/\*\*\s+(.*?)\s+\*\*/g, "**$1**");
+  normalized = normalized.replace(/\*\*\s+(.*?)\*\*/g, "**$1**");
+  normalized = normalized.replace(/\*\*(.*?)\s+\*\*/g, "**$1**");
+
+  const parts = normalized.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      const boldContent = part.slice(2, -2);
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      const boldContent = part.slice(2, -2).trim();
       return (
         <strong key={i} className="font-semibold text-slate-100">
           {boldContent}
         </strong>
       );
     }
-    return part;
+    // Remove any remaining stray double asterisks that couldn't be paired
+    return part.replace(/\*\*/g, "");
   });
 };
 

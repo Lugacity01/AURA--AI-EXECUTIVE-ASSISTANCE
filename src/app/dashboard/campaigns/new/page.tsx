@@ -6,6 +6,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cleanBrowserText, replaceContactPlaceholders } from "@/lib/font-sanitizer";
 
+const safeParseJson = async (res: Response, defaultError = "Request failed") => {
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || defaultError };
+  }
+  if (!res.ok) {
+    throw new Error(data.error || data.message || defaultError);
+  }
+  return data;
+};
+
 export default function NewCampaignWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -27,6 +41,7 @@ export default function NewCampaignWizard() {
   const [channel, setChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [basePrompt, setBasePrompt] = useState("");
   const [generationMode, setGenerationMode] = useState<"ai" | "standard">("standard");
+  const [contentLength, setContentLength] = useState<"SHORT" | "MEDIUM" | "LONG">("MEDIUM");
   const [recipientSearch, setRecipientSearch] = useState("");
 
   // PDF Attachment & A4 Letterhead Canvas State
@@ -147,7 +162,7 @@ export default function NewCampaignWizard() {
     try {
       const res = await fetch("/api/organizations");
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJson(res);
         setOrganizations(Array.isArray(data) ? data : []);
       }
     } catch (e) { }
@@ -157,7 +172,7 @@ export default function NewCampaignWizard() {
     try {
       const res = await fetch("/api/groups");
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJson(res);
         setGroups(Array.isArray(data) ? data : []);
       }
     } catch (e) { }
@@ -173,7 +188,7 @@ export default function NewCampaignWizard() {
     try {
       const res = await fetch(`/api/campaigns/${id}`);
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJson(res);
         setCampaignId(data.id);
         setTitle(data.title);
         setCampaignType(data.campaignType);
@@ -233,7 +248,7 @@ export default function NewCampaignWizard() {
             }),
           });
           if (res.ok) {
-            const contact = await res.json();
+            const contact = await safeParseJson(res);
             newContactIds.push(contact.id);
           }
         }
@@ -280,12 +295,8 @@ export default function NewCampaignWizard() {
           })
         });
 
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Failed to upload file");
-        }
-        const { attachment } = await res.json();
-        setAttachments(prev => [...prev, attachment]);
+        const data = await safeParseJson(res);
+        setAttachments(prev => [...prev, data.attachment]);
       }
     } catch (err: any) {
       setError(err.message);
@@ -313,7 +324,7 @@ export default function NewCampaignWizard() {
     try {
       const res = await fetch("/api/contacts?limit=100");
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJson(res);
         setContacts(data.contacts || []);
       }
     } catch (e) {
@@ -347,7 +358,7 @@ export default function NewCampaignWizard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title, campaignType, channel })
         });
-        if (!res.ok) throw new Error("Failed to update campaign");
+        const data = await safeParseJson(res, "Failed to update campaign");
         setStep(2);
       } else {
         // Creating a new one
@@ -356,8 +367,7 @@ export default function NewCampaignWizard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title, campaignType, channel, description: "New AI Campaign" })
         });
-        if (!res.ok) throw new Error("Failed to create campaign");
-        const data = await res.json();
+        const data = await safeParseJson(res, "Failed to create campaign");
         setCampaignId(data.id);
         setStep(2);
       }
@@ -412,6 +422,7 @@ export default function NewCampaignWizard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         basePrompt,
+        contentLength,
         pdfEnabled: Boolean(pdfEnabled),
         pdfFilename,
         pdfContentSource,
@@ -438,11 +449,13 @@ export default function NewCampaignWizard() {
     try {
       // Fire template save & generation trigger in parallel without blocking UI
       if (campaignId) {
-        fetch(`/api/campaigns/${campaignId}/template`, {
+        // Save template & contentLength first, and await completion
+        const templateRes = await fetch(`/api/campaigns/${campaignId}/template`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             basePrompt,
+            contentLength,
             pdfEnabled: Boolean(pdfEnabled),
             pdfFilename: pdfFilename || "Attachment_Document.pdf",
             pdfContentSource: pdfContentSource || "EMAIL_BODY",
@@ -458,26 +471,27 @@ export default function NewCampaignWizard() {
             pdfLineHeight,
             pdfAlignment
           })
-        }).catch(() => {});
+        });
+        await safeParseJson(templateRes, "Failed to save campaign template");
 
-        fetch(`/api/campaigns/${campaignId}/generate`, {
+        const generateRes = await fetch(`/api/campaigns/${campaignId}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             useAi: generationMode === "ai",
             regenerate: true,
+            contentLength,
             eventDate: eventDate && eventTime ? `${eventDate}T${eventTime}:00Z` : undefined,
-            eventDuration: parseInt(eventDuration)
+            eventDuration: eventDuration ? parseInt(eventDuration) : undefined
           })
-        }).catch(e => {
-          console.error("Failed to start generation:", e);
         });
+        await safeParseJson(generateRes, "Failed to start generation");
       }
 
       const interval = setInterval(async () => {
         const statusRes = await fetch(`/api/campaigns/${campaignId}`);
         if (statusRes.ok) {
-          const campaignData = await statusRes.json();
+          const campaignData = await safeParseJson(statusRes);
           const recipients = campaignData.recipients || [];
           if (campaignData.status === "READY" && recipients.length > 0) {
             setCampaignRecipients(recipients);
@@ -564,10 +578,7 @@ export default function NewCampaignWizard() {
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to schedule campaign");
-      }
+      await safeParseJson(res, "Failed to schedule campaign");
 
       router.push("/dashboard/campaigns");
     } catch (err: any) {
@@ -872,40 +883,66 @@ export default function NewCampaignWizard() {
               <h2 className="text-2xl font-medium text-white mb-2">Base Prompt & Template</h2>
               <p className="text-zinc-400 mb-8">Write the core message. Aura will personalize this for each recipient based on their profile context.</p>
 
-              <textarea
-                value={basePrompt}
-                onChange={(e) => setBasePrompt(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl p-6 text-white min-h-[300px] focus:outline-none focus:border-indigo-500 transition resize-y mb-6"
-                placeholder="Write your email here... \n\ne.g., We are thrilled to announce that we've closed our Series A! I wanted to personally reach out to you..."
-              />
+              {/* Textarea Container with Integrated Length Toolbar */}
+              <div className="bg-black/50 border border-white/10 rounded-xl overflow-hidden focus-within:border-indigo-500/50 transition mb-6 shadow-inner">
+                <textarea
+                  value={basePrompt}
+                  onChange={(e) => setBasePrompt(e.target.value)}
+                  className="w-full bg-transparent p-5 md:p-6 text-white min-h-[260px] focus:outline-none resize-y text-sm leading-relaxed"
+                  placeholder="Write your email here... \n\ne.g., We are thrilled to announce that we've closed our Series A! I wanted to personally reach out to you..."
+                />
 
-              <div className="bg-white/5 border border-white/10 p-6 rounded-xl">
-                <h3 className="text-white font-medium mb-4">Content Generation Mode</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div
-                    onClick={() => setGenerationMode("ai")}
-                    className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "ai" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
-                  >
-                    <div className="flex items-center gap-2 text-white font-medium">
-                      <Wand2 className="w-4 h-4 text-indigo-400" />
-                      Deep AI Personalization
-                    </div>
-                    <p className="text-sm text-zinc-400">
-                      Aura will rewrite and personalize the base prompt specifically for each recipient using their profile data.
-                    </p>
+                {/* Integrated Length Preference Toolbar */}
+                <div className="border-t border-white/10 bg-white/[0.02] px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-zinc-400">
+                    <span className="text-sm">📏</span>
+                    <span className="font-medium text-zinc-300">Length:</span>
+                    <span className="text-zinc-400">
+                      {contentLength === "SHORT" && "1–2 short paragraphs (~50–100 words). Direct, concise."}
+                      {contentLength === "MEDIUM" && "2–3 balanced paragraphs (~120–180 words). Clear context & CTA."}
+                      {contentLength === "LONG" && "3–4 detailed paragraphs (~250–350 words). Comprehensive overview."}
+                    </span>
                   </div>
 
-                  <div
-                    onClick={() => setGenerationMode("standard")}
-                    className={`p-4 rounded-xl border cursor-pointer transition flex flex-col gap-2 ${generationMode === "standard" ? "border-indigo-500 bg-indigo-500/10" : "border-white/10 bg-black/30 hover:border-white/30"}`}
-                  >
-                    <div className="flex items-center gap-2 text-white font-medium">
-                      <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                      AI Master Template
-                    </div>
-                    <p className="text-sm text-zinc-400">
-                      Aura will generate one polished, professional master email based on your prompt, and send that exact email to everyone.
-                    </p>
+                  <div className="flex items-center gap-1 bg-black/60 p-1 rounded-lg border border-white/10 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setContentLength("SHORT")}
+                      title="1–2 short paragraphs (~50–100 words). Direct, concise, no filler."
+                      className={`px-3 py-1.5 rounded-md transition font-medium text-xs flex items-center gap-1 ${
+                        contentLength === "SHORT"
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      Short
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setContentLength("MEDIUM")}
+                      title="2–3 balanced paragraphs (~120–180 words). Clear context & CTA."
+                      className={`px-3 py-1.5 rounded-md transition font-medium text-xs flex items-center gap-1 ${
+                        contentLength === "MEDIUM"
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      Medium <span className="text-[10px] opacity-75 font-mono">(Default)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setContentLength("LONG")}
+                      title="3–4 detailed paragraphs (~250–350 words). Comprehensive overview."
+                      className={`px-3 py-1.5 rounded-md transition font-medium text-xs flex items-center gap-1 ${
+                        contentLength === "LONG"
+                          ? "bg-indigo-600 text-white shadow"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      Long
+                    </button>
                   </div>
                 </div>
               </div>

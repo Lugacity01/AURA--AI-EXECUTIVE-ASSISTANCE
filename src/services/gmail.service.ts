@@ -129,8 +129,8 @@ export class GmailService {
           receivedAt: e.receivedAt,
           status: e.status,
           userId,
-          summary: AIService.classifyIntent(e.body) === "Schedule Sync" 
-            ? `CEO Sarah Jenkins is requesting a brief 20-minute discussion this afternoon to align on the Q3 product strategy slides and pricing page adjustments.` 
+          summary: AIService.classifyIntent(e.body) === "Schedule Sync"
+            ? `CEO Sarah Jenkins is requesting a brief 20-minute discussion this afternoon to align on the Q3 product strategy slides and pricing page adjustments.`
             : `Review and confirm operational updates.`
         }
       });
@@ -184,42 +184,51 @@ export class GmailService {
       where: { userId, provider: "GMAIL", isActive: true }
     });
 
-    if (!connection || !connection.accessToken) {
+    const googleAccount = await prisma.account.findFirst({
+      where: { userId, providerId: "google" }
+    });
+
+    if (!connection && !googleAccount) {
       return { status: "NOT_CONNECTED", email: null };
     }
 
-    const gracePeriodMs = 7 * 24 * 60 * 60 * 1000; // 7 days grace threshold
+    const email = connection?.emailAddress || googleAccount?.accountId || "Google Account";
+    const refreshToken = connection?.refreshToken || googleAccount?.refreshToken;
+    const accessToken = connection?.accessToken || googleAccount?.accessToken;
 
-    if (connection.accessToken === "managed-by-better-auth") {
-      const account = await prisma.account.findFirst({
-        where: { userId, providerId: "google" }
-      });
-
-      if (!account || !account.accessToken) {
-        return { status: "NOT_CONNECTED", email: connection.emailAddress };
-      }
-
-      if (account.accessTokenExpiresAt && new Date() > new Date(account.accessTokenExpiresAt.getTime() + gracePeriodMs)) {
-        if (!account.refreshToken) {
-          return { status: "REVOKED", email: connection.emailAddress };
-        }
-      }
-
-      return { status: "CONNECTED", email: connection.emailAddress };
+    if (!accessToken) {
+      return { status: "NOT_CONNECTED", email };
     }
 
-    if (connection.expiresAt && new Date() > new Date(connection.expiresAt.getTime() + gracePeriodMs)) {
-      if (!connection.refreshToken) {
-        return { status: "REVOKED", email: connection.emailAddress };
+    // 5-minute buffer check for access token expiration
+    const bufferMs = 5 * 60 * 1000;
+    const expiresAt = connection?.expiresAt || googleAccount?.accessTokenExpiresAt;
+    const isExpired = expiresAt ? new Date(Date.now() + bufferMs) >= new Date(expiresAt) : false;
+
+    // Check if any campaign recipient failed due to an authentication/unauthorized error
+    const authErrorRecipient = await prisma.campaignRecipient.findFirst({
+      where: {
+        campaign: { userId },
+        sendStatus: "FAILED",
+        OR: [
+          { failedReason: { contains: "Unauthorized", mode: "insensitive" } },
+          { failedReason: { contains: "invalid_grant", mode: "insensitive" } },
+          { failedReason: { contains: "token", mode: "insensitive" } }
+        ]
       }
+    });
+
+    if (authErrorRecipient || (isExpired && !refreshToken)) {
+      return { status: "REVOKED", email, reason: "Google session has expired. Re-authentication required to send emails." };
     }
 
-    return { status: "CONNECTED", email: connection.emailAddress };
+    return { status: "CONNECTED", email };
   }
 
   /**
    * Idempotent connect Gmail: creates or updates the EmailConnection record.
    * Handles refresh token preservation if none is returned by Google on reconnect.
+   * Synchronizes both EmailConnection and Account tables.
    */
   static async connectGmail(
     userId: string,
@@ -238,7 +247,27 @@ export class GmailService {
       where: { userId, provider: "GMAIL" }
     });
 
-    const finalRefreshToken = data.refreshToken || (existing ? existing.refreshToken : null);
+    const googleAccount = await prisma.account.findFirst({
+      where: { userId, providerId: "google" }
+    });
+
+    const finalRefreshToken = data.refreshToken || (existing ? existing.refreshToken : null) || (googleAccount ? googleAccount.refreshToken : null);
+
+    // Default expiration window to 7 days (1 week) for Google OAuth tokens
+    const default7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const finalExpiresAt = data.expiresAt ? new Date(Math.max(data.expiresAt.getTime(), default7Days.getTime())) : default7Days;
+
+    // Sync BetterAuth Account table
+    if (googleAccount) {
+      await prisma.account.update({
+        where: { id: googleAccount.id },
+        data: {
+          accessToken: data.accessToken,
+          ...(finalRefreshToken ? { refreshToken: finalRefreshToken } : {}),
+          accessTokenExpiresAt: finalExpiresAt
+        }
+      });
+    }
 
     if (existing) {
       return prisma.emailConnection.update({
@@ -248,7 +277,7 @@ export class GmailService {
           emailAddress: data.email,
           accessToken: data.accessToken,
           refreshToken: finalRefreshToken,
-          expiresAt: data.expiresAt || null,
+          expiresAt: finalExpiresAt,
           providerUserId: data.providerUserId || existing.providerUserId,
           displayName: data.displayName || existing.displayName,
           avatarUrl: data.avatarUrl || existing.avatarUrl,
@@ -263,14 +292,13 @@ export class GmailService {
           provider: "GMAIL",
           emailAddress: data.email,
           accessToken: data.accessToken,
-          refreshToken: data.refreshToken || null,
-          expiresAt: data.expiresAt || null,
-          providerUserId: data.providerUserId || null,
-          displayName: data.displayName || null,
+          refreshToken: finalRefreshToken,
+          expiresAt: finalExpiresAt,
+          providerUserId: data.providerUserId || "google-user",
+          displayName: data.displayName || "Google User",
           avatarUrl: data.avatarUrl || null,
           scope: data.scope || null,
-          isActive: true,
-          connectedAt: new Date()
+          isActive: true
         }
       });
     }
@@ -310,3 +338,4 @@ export class GmailService {
     }
   }
 }
+

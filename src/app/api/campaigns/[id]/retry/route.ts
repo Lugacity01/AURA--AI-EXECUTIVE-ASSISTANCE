@@ -27,10 +27,10 @@ export async function POST(
     const result = await prisma.campaignRecipient.updateMany({
       where: {
         campaignId: id,
-        sendStatus: "FAILED",
-        approvalStatus: "APPROVED"
+        sendStatus: "FAILED"
       },
       data: {
+        approvalStatus: "APPROVED",
         sendStatus: "PENDING",
         failedReason: null
       }
@@ -39,6 +39,18 @@ export async function POST(
     if (result.count === 0) {
       return NextResponse.json({ error: "No failed recipients to retry" }, { status: 400 });
     }
+
+    // Recalculate accurate counts directly from DB
+    const sentCount = await prisma.campaignRecipient.count({ where: { campaignId: id, sendStatus: "SENT" } });
+    const failedCount = await prisma.campaignRecipient.count({ where: { campaignId: id, sendStatus: "FAILED" } });
+
+    await prisma.campaign.update({
+      where: { id },
+      data: {
+        emailsSent: sentCount,
+        failedRecipients: failedCount
+      }
+    });
 
     // Re-schedule the campaign via the queue service
     await CampaignQueueService.scheduleCampaign(id, session.user.id);

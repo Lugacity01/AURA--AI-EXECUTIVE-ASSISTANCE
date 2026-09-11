@@ -29,6 +29,7 @@ export async function POST(
       pdfFontSize,
       pdfLineHeight,
       pdfAlignment,
+      contentLength,
       useAi = true
     } = body;
 
@@ -45,8 +46,9 @@ export async function POST(
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    // Update the master draft/description & PDF fields
+    // Update the master draft/description & PDF fields & contentLength
     const updateData: any = { description: description };
+    if (contentLength !== undefined) updateData.contentLength = contentLength;
     if (pdfTemplate !== undefined) updateData.pdfTemplate = pdfTemplate;
     if (pdfTitle !== undefined) updateData.pdfTitle = pdfTitle;
     if (pdfEnabled !== undefined) updateData.pdfEnabled = pdfEnabled;

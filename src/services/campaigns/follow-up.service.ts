@@ -61,6 +61,7 @@ export class FollowUpService {
         followUpType: followUpType,
         userId: userId,
         status: CampaignStatus.GENERATING, // Start in generating state
+        contentLength: originalCampaign.contentLength || "MEDIUM",
         template: originalCampaign.templateId ? { connect: { id: originalCampaign.templateId } } : undefined,
         includeMeetLink: includeMeetLink,
         meetLink: originalCampaign.meetLink // Copy parent's meetLink over just in case
@@ -156,17 +157,35 @@ export class FollowUpService {
         const contextObj = recipient.personalizationContext ? JSON.parse(recipient.personalizationContext) : {};
         const { originalSubject, originalBody } = contextObj;
 
+        const getTypeDirective = (type?: string | null) => {
+          switch (type?.toUpperCase()) {
+            case "REMINDER":
+              return "Write a concise, polite, and effective reminder email urging the recipient to review and respond to the previous email sent below.";
+            case "CUSTOM":
+              return "Write a tailored follow-up email adhering strictly to the user's custom instructions provided below.";
+            case "FOLLOW_UP":
+            default:
+              return "Write a warm, professional follow-up email providing value, checking in on the previous conversation, and offering next steps.";
+          }
+        };
+
+        const typeDirective = getTypeDirective(childCampaign.followUpType);
+
         const systemPrompt = `You are Aura, an elite Executive AI Assistant.
-Your goal is to write a highly personalized, professional follow-up email based on the previous interaction.
+Your goal is to write a highly personalized, professional follow-up email based on the previous interaction and requested follow-up type (${childCampaign.followUpType || 'FOLLOW_UP'}).
 The email should sound human, warm, but incredibly sharp.
 Output exactly as a JSON object with 'subject' and 'body' string properties. Do not wrap in markdown or backticks.
 Use '[Name]' as the placeholder for the recipient's name (e.g. "Hi [Name],") if you don't know it, otherwise use their actual name.
-Preserve exact signatures if requested, otherwise sign off as: ${senderName}`;
+CLOSING SIGN-OFF REQUIREMENT:
+Sign off at the end of the email exactly as:
+Azeez Mumeenat
+Program Manager`;
 
         const userPrompt = `
-Follow-up Instructions:
-${additionalInstructions}
+Follow-up Type Goal (${childCampaign.followUpType || 'FOLLOW_UP'}):
+${typeDirective}
 
+${additionalInstructions ? `Additional Instructions:\n${additionalInstructions}\n` : ""}
 Original Campaign Goal:
 ${originalCampaign.description || ""}
 
@@ -193,12 +212,21 @@ Write the follow-up email naturally referencing the previous email if necessary.
         });
 
         const parsed = JSON.parse(response.choices[0].message.content || "{}");
-        
+        let body = parsed.body || "";
+
+        // Clean old sender names and format closing signature
+        body = body.replace(/Adesina\s+Yinka\s+Abeeb|Yinka\s+Abeeb\s+Adesina|Abeeb\s+Adesina/gi, "Azeez Mumeenat");
+        if (body.includes("Azeez Mumeenat") && !body.includes("Azeez Mumeenat\nProgram Manager") && !body.includes("Azeez Mumeenat\r\nProgram Manager")) {
+          body = body.replace(/Azeez\s+Mumeenat(?![\s\S]*Azeez\s+Mumeenat)/i, "Azeez Mumeenat\nProgram Manager");
+        } else if (!body.toLowerCase().includes("azeez mumeenat")) {
+          body = `${body.trim()}\n\nWarm regards,\n\nAzeez Mumeenat\nProgram Manager`;
+        }
+
         await prisma.campaignRecipient.update({
           where: { id: recipient.id },
           data: {
             personalizedSubject: parsed.subject || `Re: ${originalSubject}`,
-            personalizedBody: parsed.body,
+            personalizedBody: body,
             approvalStatus: CampaignRecipientStatus.GENERATED,
             generatedAt: new Date()
           }

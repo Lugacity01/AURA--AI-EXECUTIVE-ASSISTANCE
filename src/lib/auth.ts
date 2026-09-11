@@ -11,6 +11,8 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || "mock-client-id-for-compilation",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "mock-client-secret-for-compilation",
+      prompt: "consent",
+      accessType: "offline",
       scope: [
         "openid",
         "profile",

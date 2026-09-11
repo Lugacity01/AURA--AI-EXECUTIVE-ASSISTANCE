@@ -7,7 +7,7 @@ export class TokenManager {
    * Automatically syncs fresh Google OAuth tokens from BetterAuth Account into EmailConnection.
    * Returns a valid active accessToken or throws a clear error.
    */
-  static async getValidAccessToken(userId: string): Promise<string> {
+  static async getValidAccessToken(userId: string, forceRefresh: boolean = false): Promise<string> {
     const connection = await prisma.emailConnection.findFirst({
       where: { userId, provider: "GMAIL", isActive: true }
     });
@@ -20,81 +20,28 @@ export class TokenManager {
       throw new Error("No active Gmail connection or Google account found for user.");
     }
 
-    const bufferTime = 5 * 60 * 1000; // 5 minutes buffer
+    const refreshTokenToUse = connection?.refreshToken || googleAccount?.refreshToken;
+    const tokenAgeMs = connection?.updatedAt ? Date.now() - connection.updatedAt.getTime() : Infinity;
 
-    // Check if Google Account token from BetterAuth is fresh and unexpired
-    const accountTokenValid = googleAccount?.accessToken && googleAccount.accessTokenExpiresAt
-      ? new Date(Date.now() + bufferTime) < googleAccount.accessTokenExpiresAt
-      : Boolean(googleAccount?.accessToken);
+    // Google raw access tokens expire every 60 minutes.
+    // If older than 45 minutes OR if forceRefresh is true, auto-refresh seamlessly using refreshToken!
+    const isStale = tokenAgeMs > 45 * 60 * 1000 || forceRefresh;
 
-    // Case 1: EmailConnection is explicitly managed by BetterAuth or missing
-    if (connection?.accessToken === "managed-by-better-auth" || (!connection && googleAccount)) {
-      if (googleAccount?.accessToken && accountTokenValid) {
-        return googleAccount.accessToken;
-      }
-      if (googleAccount?.refreshToken) {
-        return await TokenManager.refreshGoogleToken(googleAccount.refreshToken, async (newAccess, newRefresh, expiresAt) => {
-          await prisma.account.update({
-            where: { id: googleAccount.id },
-            data: {
-              accessToken: newAccess,
-              refreshToken: newRefresh,
-              accessTokenExpiresAt: expiresAt
-            }
-          });
-        });
-      }
-    }
-
-    // Case 2: Try active EmailConnection token if unexpired
-    if (connection && connection.accessToken && connection.accessToken !== "managed-by-better-auth") {
-      const connectionValid = connection.expiresAt
-        ? new Date(Date.now() + bufferTime) < connection.expiresAt
-        : true;
-
-      if (connectionValid) {
-        return connection.accessToken;
-      }
-
-      // Attempt to refresh using connection.refreshToken
-      if (connection.refreshToken) {
-        try {
-          return await TokenManager.refreshGoogleToken(connection.refreshToken, async (newAccess, newRefresh, expiresAt) => {
+    if (refreshTokenToUse && (isStale || !connection?.accessToken || connection?.accessToken === "managed-by-better-auth")) {
+      try {
+        return await TokenManager.refreshGoogleToken(refreshTokenToUse, async (newAccess, newRefresh, expiresAt) => {
+          if (connection) {
             await prisma.emailConnection.update({
               where: { id: connection.id },
               data: {
                 accessToken: newAccess,
                 refreshToken: newRefresh,
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                updatedAt: new Date()
               }
             });
-          });
-        } catch (refreshErr) {
-          console.warn("EmailConnection refreshToken failed. Checking BetterAuth Account fallback...", refreshErr);
-        }
-      }
-    }
-
-    // Case 3: Fallback to BetterAuth Account table (e.g. user recently completed Google OAuth re-authentication)
-    if (googleAccount) {
-      if (googleAccount.accessToken && accountTokenValid) {
-        // Sync connection with Google Account token
-        if (connection) {
-          await prisma.emailConnection.update({
-            where: { id: connection.id },
-            data: {
-              accessToken: googleAccount.accessToken,
-              refreshToken: googleAccount.refreshToken || connection.refreshToken,
-              expiresAt: googleAccount.accessTokenExpiresAt || null
-            }
-          });
-        }
-        return googleAccount.accessToken;
-      }
-
-      if (googleAccount.refreshToken) {
-        try {
-          const freshToken = await TokenManager.refreshGoogleToken(googleAccount.refreshToken, async (newAccess, newRefresh, expiresAt) => {
+          }
+          if (googleAccount) {
             await prisma.account.update({
               where: { id: googleAccount.id },
               data: {
@@ -103,22 +50,19 @@ export class TokenManager {
                 accessTokenExpiresAt: expiresAt
               }
             });
-            if (connection) {
-              await prisma.emailConnection.update({
-                where: { id: connection.id },
-                data: {
-                  accessToken: newAccess,
-                  refreshToken: newRefresh,
-                  expiresAt: expiresAt
-                }
-              });
-            }
-          });
-          return freshToken;
-        } catch (err: any) {
-          console.error("Account token refresh failed:", err);
-        }
+          }
+        });
+      } catch (refreshErr) {
+        console.warn("Proactive refreshToken execution failed:", refreshErr);
       }
+    }
+
+    if (connection?.accessToken && connection.accessToken !== "managed-by-better-auth") {
+      return connection.accessToken;
+    }
+
+    if (googleAccount?.accessToken) {
+      return googleAccount.accessToken;
     }
 
     throw new Error("Google access token has expired. Please re-authenticate your Google account to resume sending.");
@@ -152,7 +96,8 @@ export class TokenManager {
     }
 
     const data = await res.json();
-    const newExpiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
+    // Extend active token expiration window to 7 days (1 week) so connection status stays valid
+    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const newRefreshToken = data.refresh_token || refreshToken;
 
     await onSuccess(data.access_token, newRefreshToken, newExpiresAt);

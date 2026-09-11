@@ -521,6 +521,7 @@ model Campaign {
   eventDate          DateTime?
   eventDuration      Int?
   meetLink           String?
+  contentLength      String?        @default("MEDIUM") // "SHORT", "MEDIUM", "LONG"
   includeMeetLink    Boolean        @default(true)
   
   // PDF Attachment Options

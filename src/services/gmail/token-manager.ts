@@ -21,11 +21,14 @@ export class TokenManager {
     }
 
     const refreshTokenToUse = connection?.refreshToken || googleAccount?.refreshToken;
+    
+    // Check actual token expiration times
+    const expiresAtTime = connection?.expiresAt?.getTime() || googleAccount?.accessTokenExpiresAt?.getTime();
+    const isExpiredOrExpiring = expiresAtTime ? (expiresAtTime - Date.now() < 5 * 60 * 1000) : false;
     const tokenAgeMs = connection?.updatedAt ? Date.now() - connection.updatedAt.getTime() : Infinity;
 
-    // Google raw access tokens expire every 60 minutes.
-    // If older than 45 minutes OR if forceRefresh is true, auto-refresh seamlessly using refreshToken!
-    const isStale = tokenAgeMs > 45 * 60 * 1000 || forceRefresh;
+    // Token is stale if forceRefresh is requested, if token is expiring within 5 min, or if updatedAt is >45 min old
+    const isStale = forceRefresh || isExpiredOrExpiring || tokenAgeMs > 45 * 60 * 1000;
 
     if (refreshTokenToUse && (isStale || !connection?.accessToken || connection?.accessToken === "managed-by-better-auth")) {
       try {
@@ -52,20 +55,22 @@ export class TokenManager {
             });
           }
         });
-      } catch (refreshErr) {
-        console.warn("Proactive refreshToken execution failed:", refreshErr);
+      } catch (refreshErr: any) {
+        console.warn("Proactive refreshToken execution failed:", refreshErr?.message || refreshErr);
       }
     }
 
-    if (connection?.accessToken && connection.accessToken !== "managed-by-better-auth") {
-      return connection.accessToken;
+    if (!forceRefresh) {
+      if (connection?.accessToken && connection.accessToken !== "managed-by-better-auth") {
+        return connection.accessToken;
+      }
+
+      if (googleAccount?.accessToken) {
+        return googleAccount.accessToken;
+      }
     }
 
-    if (googleAccount?.accessToken) {
-      return googleAccount.accessToken;
-    }
-
-    throw new Error("Google access token has expired. Please re-authenticate your Google account to resume sending.");
+    throw new Error("Google access token has expired or is invalid. Please re-authenticate your Google account to resume sending.");
   }
 
   private static async refreshGoogleToken(

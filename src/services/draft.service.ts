@@ -78,7 +78,7 @@ export class DraftService {
 
     // 3. Send email via Google's messages.send API
     console.log(`Dispatching email to ${recipient} on Gmail thread: ${threadId}`);
-    const sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    let sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -90,9 +90,33 @@ export class DraftService {
       }),
     });
 
+    // If 401 Unauthorized, force refresh the access token and try sending ONCE more!
+    if (sendRes.status === 401) {
+      console.warn("Gmail API returned 401 Unauthorized. Attempting forced token refresh...");
+      try {
+        const refreshedToken = await TokenManager.getValidAccessToken(userId, true);
+        sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${refreshedToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            raw: encodedRaw,
+            threadId: threadId,
+          }),
+        });
+      } catch (refreshErr: any) {
+        console.error("Token refresh retry failed:", refreshErr);
+      }
+    }
+
     if (!sendRes.ok) {
       const errText = await sendRes.text();
       console.error("Gmail API send endpoint error response:", errText);
+      if (sendRes.status === 401) {
+        throw new Error("Google Authentication required: Your Google access token has expired or was revoked. Please log in with Google again to reconnect your email account.");
+      }
       throw new Error(`Gmail API sending failed: ${sendRes.statusText} (${errText})`);
     }
 

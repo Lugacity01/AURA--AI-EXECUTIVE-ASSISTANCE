@@ -428,6 +428,17 @@ export default function CampaignDetailPage() {
     );
   }
 
+  const isGoogleAuthError = (str: string | null | undefined) => {
+    if (!str) return false;
+    // Exclude AI model names or 404 endpoint errors
+    if (str.includes("google/gemini") || str.includes("gemini-") || str.includes("404")) return false;
+    return /Unauthorized|401|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token|Google Authentication required|Invalid Credentials/i.test(str);
+  };
+
+  const hasAuthError = (error && isGoogleAuthError(error)) ||
+    campaign?.recipients?.some((r: any) => r.sendStatus === 'FAILED' && isGoogleAuthError(r.failedReason)) ||
+    campaign?.jobs?.some((j: any) => j.status === 'FAILED' && isGoogleAuthError(j.lastError));
+
   return (
     <div className="flex flex-col h-full bg-[#0F0F12]">
       {/* Toast Notice */}
@@ -536,12 +547,14 @@ export default function CampaignDetailPage() {
         )}
         {(campaign.status === 'SENDING' || campaign.status === 'FAILED') && (
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            <button
-              onClick={handleGoogleReauth}
-              className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2 rounded-full text-sm transition flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
-            >
-              <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
-            </button>
+            {hasAuthError && (
+              <button
+                onClick={handleGoogleReauth}
+                className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2 rounded-full text-sm transition flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
+              >
+                <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
+              </button>
+            )}
             <button
               onClick={handleForceResume}
               disabled={isSending}
@@ -607,49 +620,34 @@ export default function CampaignDetailPage() {
       <div className="p-4 md:p-8 flex flex-col gap-8">
 
         {/* Google OAuth Re-authentication Required Banner */}
-        {(() => {
-          const isGoogleAuthError = (str: string | null | undefined) => {
-            if (!str) return false;
-            // Exclude AI model names or 404 endpoint errors
-            if (str.includes("google/gemini") || str.includes("gemini-") || str.includes("404")) return false;
-            return /Unauthorized|401|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token|Google Authentication required|Invalid Credentials/i.test(str);
-          };
-
-          const hasAuthError = (error && isGoogleAuthError(error)) ||
-            campaign?.recipients?.some((r: any) => r.sendStatus === 'FAILED' && isGoogleAuthError(r.failedReason)) ||
-            campaign?.jobs?.some((j: any) => j.status === 'FAILED' && isGoogleAuthError(j.lastError));
-
-          if (!hasAuthError) return null;
-
-          return (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/10 to-indigo-500/15 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl backdrop-blur-md"
-            >
-              <div className="flex items-start md:items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
-                  <AlertCircle className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                    <span>🔑 Google Re-authentication Required</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Action Needed</span>
-                  </h3>
-                  <p className="text-xs text-amber-200/80 mt-1 max-w-xl">
-                    Your Google account session has expired or been revoked. Click below to reconnect Google in 1-click and automatically resume sending your campaign.
-                  </p>
-                </div>
+        {hasAuthError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-red-500/10 to-indigo-500/15 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl backdrop-blur-md"
+          >
+            <div className="flex items-start md:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+                <AlertCircle className="w-6 h-6" />
               </div>
-              <button
-                onClick={handleGoogleReauth}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-              >
-                <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
-              </button>
-            </motion.div>
-          );
-        })()}
+              <div>
+                <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                  <span>🔑 Google Re-authentication Required</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Action Needed</span>
+                </h3>
+                <p className="text-xs text-amber-200/80 mt-1 max-w-xl">
+                  Your Google account session has expired or been revoked. Click below to reconnect Google in 1-click and automatically resume sending your campaign.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleGoogleReauth}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+            >
+              <RefreshCcw className="w-4 h-4" /> Re-connect Google & Resume
+            </button>
+          </motion.div>
+        )}
 
         {/* Campaign Timeline */}
         {followUps.length > 0 && (

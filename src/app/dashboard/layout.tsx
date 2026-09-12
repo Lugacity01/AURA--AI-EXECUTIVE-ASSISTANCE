@@ -63,15 +63,19 @@ export default function DashboardLayout({
   React.useEffect(() => {
     const checkGmailStatus = async () => {
       try {
-        const res = await fetch("/api/gmail/status");
+        const res = await fetch(`/api/gmail/status?_t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.status === "REVOKED") setGmailRevoked(true);
+          if (data.status === "REVOKED") {
+            setGmailRevoked(true);
+          } else {
+            setGmailRevoked(false);
+          }
         }
       } catch (err) {}
     };
     if (session) checkGmailStatus();
-  }, [session]);
+  }, [session, pathname]);
 
   React.useEffect(() => {
     if (!isPending && !session) {

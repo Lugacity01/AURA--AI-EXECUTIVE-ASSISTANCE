@@ -205,7 +205,11 @@ export class GmailService {
     const expiresAt = connection?.expiresAt || googleAccount?.accessTokenExpiresAt;
     const isExpired = expiresAt ? new Date(Date.now() + bufferMs) >= new Date(expiresAt) : false;
 
-    // Check if any campaign recipient failed due to an authentication/unauthorized error
+    if (isExpired && !refreshToken) {
+      return { status: "REVOKED", email, reason: "Google session has expired. Re-authentication required to send emails." };
+    }
+
+    // Check if any campaign recipient failed due to an explicit Google OAuth authentication error
     const authErrorRecipient = await prisma.campaignRecipient.findFirst({
       where: {
         campaign: { userId },
@@ -213,12 +217,13 @@ export class GmailService {
         OR: [
           { failedReason: { contains: "Unauthorized", mode: "insensitive" } },
           { failedReason: { contains: "invalid_grant", mode: "insensitive" } },
-          { failedReason: { contains: "token", mode: "insensitive" } }
+          { failedReason: { contains: "Google Authentication required", mode: "insensitive" } },
+          { failedReason: { contains: "Invalid Credentials", mode: "insensitive" } }
         ]
       }
     });
 
-    if (authErrorRecipient || (isExpired && !refreshToken)) {
+    if (authErrorRecipient) {
       return { status: "REVOKED", email, reason: "Google session has expired. Re-authentication required to send emails." };
     }
 
@@ -229,6 +234,7 @@ export class GmailService {
    * Idempotent connect Gmail: creates or updates the EmailConnection record.
    * Handles refresh token preservation if none is returned by Google on reconnect.
    * Synchronizes both EmailConnection and Account tables.
+   * Clears past OAuth failure reasons and auto-resumes any failed campaign sends.
    */
   static async connectGmail(
     userId: string,
@@ -269,8 +275,9 @@ export class GmailService {
       });
     }
 
+    let connection;
     if (existing) {
-      return prisma.emailConnection.update({
+      connection = await prisma.emailConnection.update({
         where: { id: existing.id },
         data: {
           isActive: true,
@@ -286,7 +293,7 @@ export class GmailService {
         }
       });
     } else {
-      return prisma.emailConnection.create({
+      connection = await prisma.emailConnection.create({
         data: {
           userId,
           provider: "GMAIL",
@@ -302,6 +309,71 @@ export class GmailService {
         }
       });
     }
+
+    // Clear old auth failure errors and auto-resume failed recipients for this user
+    try {
+      await prisma.campaignRecipient.updateMany({
+        where: {
+          campaign: { userId },
+          sendStatus: "FAILED",
+          OR: [
+            { failedReason: { contains: "Unauthorized", mode: "insensitive" } },
+            { failedReason: { contains: "invalid_grant", mode: "insensitive" } },
+            { failedReason: { contains: "Google Authentication required", mode: "insensitive" } },
+            { failedReason: { contains: "Invalid Credentials", mode: "insensitive" } }
+          ]
+        },
+        data: {
+          approvalStatus: "APPROVED",
+          sendStatus: "PENDING",
+          failedReason: null
+        }
+      });
+
+      // Reset failed campaigns back to SENDING and re-queue background job
+      const failedCampaigns = await prisma.campaign.findMany({
+        where: { userId, status: "FAILED" }
+      });
+
+      for (const c of failedCampaigns) {
+        const pendingCount = await prisma.campaignRecipient.count({
+          where: { campaignId: c.id, sendStatus: "PENDING" }
+        });
+        if (pendingCount > 0) {
+          await prisma.campaign.update({
+            where: { id: c.id },
+            data: { status: "SENDING" as any }
+          });
+
+          const existingQueue = await prisma.campaignQueue.findFirst({
+            where: { campaignId: c.id }
+          });
+
+          if (existingQueue) {
+            await prisma.campaignQueue.update({
+              where: { id: existingQueue.id },
+              data: {
+                status: "QUEUED",
+                nextRunAt: new Date(),
+                lastError: null
+              }
+            });
+          } else {
+            await prisma.campaignQueue.create({
+              data: {
+                campaignId: c.id,
+                status: "QUEUED",
+                nextRunAt: new Date()
+              }
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to auto-resume campaigns upon Google connection:", err);
+    }
+
+    return connection;
   }
 
   /**

@@ -610,7 +610,9 @@ export default function CampaignDetailPage() {
         {(() => {
           const isGoogleAuthError = (str: string | null | undefined) => {
             if (!str) return false;
-            return /Google|Gmail|Unauthorized|401|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token/i.test(str);
+            // Exclude AI model names or 404 endpoint errors
+            if (str.includes("google/gemini") || str.includes("gemini-") || str.includes("404")) return false;
+            return /Unauthorized|401|invalid_grant|refresh_token|token expired|Token refresh|No active Gmail|no refresh token|Google Authentication required|Invalid Credentials/i.test(str);
           };
 
           const hasAuthError = (error && isGoogleAuthError(error)) ||

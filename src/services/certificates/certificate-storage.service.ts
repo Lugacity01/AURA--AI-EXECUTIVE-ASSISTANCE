@@ -69,7 +69,7 @@ export async function saveGeneratedPdf(
 }
 
 /**
- * Reads storage file from Data URL, public folder, or /tmp directory.
+ * Reads storage file from Data URL, remote HTTP URL, public folder, or /tmp directory.
  */
 export async function readStorageFile(storageKey: string): Promise<Buffer> {
   if (!storageKey) {
@@ -83,18 +83,42 @@ export async function readStorageFile(storageKey: string): Promise<Buffer> {
     return Buffer.from(base64Data, 'base64');
   }
 
-  // 2. Try reading from public directory (localhost)
+  // 2. Handle Remote HTTP / HTTPS URLs
+  if (storageKey.startsWith('http://') || storageKey.startsWith('https://')) {
+    const res = await fetch(storageKey);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch remote storage file: ${res.statusText}`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  // 3. Try reading from public directory (localhost)
   try {
     const relativePath = storageKey.startsWith('/') ? storageKey.slice(1) : storageKey;
     const fullPath = path.join(PUBLIC_DIR, relativePath);
     return await fs.readFile(fullPath);
   } catch (err) {
-    // 3. Try reading from /tmp directory (Vercel)
+    // 4. Try reading from /tmp directory (Vercel)
     try {
       const filename = path.basename(storageKey);
       const tmpPath = path.join(TMP_DIR, filename);
       return await fs.readFile(tmpPath);
     } catch (tmpErr) {
+      // 5. Try fetching relative path from NEXT_PUBLIC_APP_URL or VERCEL_URL if available
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+      if (baseUrl) {
+        try {
+          const fullUrl = `${baseUrl}${storageKey.startsWith('/') ? '' : '/'}${storageKey}`;
+          const res = await fetch(fullUrl);
+          if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            return Buffer.from(arrayBuffer);
+          }
+        } catch (fetchErr) {
+          // Fall through
+        }
+      }
       throw new Error(`File not found on disk or storage: ${storageKey}`);
     }
   }

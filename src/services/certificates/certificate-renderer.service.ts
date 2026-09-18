@@ -56,7 +56,10 @@ export class CertificateRendererService {
         // 1. Draw Background Image if present
         if (backgroundBuffer && backgroundBuffer.length > 0) {
           try {
-            const bgDataUrl = `data:image/png;base64,${backgroundBuffer.toString('base64')}`;
+            const isJpeg = backgroundBuffer[0] === 0xff && backgroundBuffer[1] === 0xd8 && backgroundBuffer[2] === 0xff;
+            const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+            const bgDataUrl = `data:${mimeType};base64,${backgroundBuffer.toString('base64')}`;
+
             doc.image(bgDataUrl, 0, 0, {
               width: canvasWidth,
               height: canvasHeight,

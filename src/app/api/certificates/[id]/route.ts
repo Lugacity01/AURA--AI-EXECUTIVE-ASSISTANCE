@@ -26,6 +26,7 @@ export async function GET(
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="${fileName}"`,
+            'Content-Length': buffer.length.toString(),
           },
         });
       } catch (err: any) {

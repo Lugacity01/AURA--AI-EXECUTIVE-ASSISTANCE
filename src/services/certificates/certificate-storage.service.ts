@@ -68,9 +68,7 @@ export async function saveGeneratedPdf(
   }
 }
 
-/**
- * Reads storage file from Data URL, remote HTTP URL, public folder, or /tmp directory.
- */
+
 export async function readStorageFile(storageKey: string): Promise<Buffer> {
   if (!storageKey) {
     throw new Error('Storage key is empty');

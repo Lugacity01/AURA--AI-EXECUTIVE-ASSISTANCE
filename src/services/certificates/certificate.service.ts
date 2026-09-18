@@ -334,17 +334,7 @@ export class CertificateService {
     const safeNum = cert.certificateNumber.replace(/[^a-zA-Z0-9_-]/g, '_');
     const fileName = `${cert.certificateNumber}_${safeName}.pdf`;
 
-    // 1. Attempt to read from storage key if present
-    if (cert.pdfStorageKey) {
-      try {
-        const buffer = await readStorageFile(cert.pdfStorageKey);
-        return { buffer, fileName, cert };
-      } catch (readErr) {
-        console.log(`[CertificateService] PDF file missing on storage (${cert.pdfStorageKey}). Re-rendering on-demand...`);
-      }
-    }
-
-    // 2. Re-render PDF on-the-fly dynamically
+    // Dynamically render PDF on-the-fly to guarantee valid stream and avoid stale/corrupted disk caches
     let backgroundBuffer: Buffer | null = null;
     if (cert.template?.backgroundStorageKey) {
       try {

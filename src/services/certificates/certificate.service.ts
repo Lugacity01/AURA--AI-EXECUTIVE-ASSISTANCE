@@ -309,34 +309,100 @@ export class CertificateService {
   }
 
   /**
-   * Create a ZIP file of multiple certificate PDFs for bulk download
+   * Retrieves or dynamically re-renders a certificate PDF buffer on demand.
+   * Ensures 100% reliability on Vercel serverless environments where local disk files are ephemeral.
    */
-  static async createBulkZip(userId: string, certificateIds: string[]): Promise<Buffer> {
-    const certs = await prisma.certificate.findMany({
-      where: {
-        id: { in: certificateIds },
-        userId,
+  static async getCertificatePdfBuffer(
+    userId: string,
+    certificateId: string
+  ): Promise<{ buffer: Buffer; fileName: string; cert: any }> {
+    const cert = await prisma.certificate.findFirst({
+      where: { id: certificateId, userId },
+      include: {
+        contact: true,
+        template: true,
       },
     });
 
-    if (certs.length === 0) {
+    if (!cert) {
+      throw new Error('Certificate not found or unauthorized');
+    }
+
+    const snapshot: CertificateSnapshot = cert.snapshotData ? JSON.parse(cert.snapshotData) : {} as any;
+    const recipientName = cert.contact?.name || snapshot.contactName || 'Recipient';
+    const safeName = recipientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeNum = cert.certificateNumber.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `${cert.certificateNumber}_${safeName}.pdf`;
+
+    // 1. Attempt to read from storage key if present
+    if (cert.pdfStorageKey) {
+      try {
+        const buffer = await readStorageFile(cert.pdfStorageKey);
+        return { buffer, fileName, cert };
+      } catch (readErr) {
+        console.log(`[CertificateService] PDF file missing on storage (${cert.pdfStorageKey}). Re-rendering on-demand...`);
+      }
+    }
+
+    // 2. Re-render PDF on-the-fly dynamically
+    let backgroundBuffer: Buffer | null = null;
+    if (cert.template?.backgroundStorageKey) {
+      try {
+        backgroundBuffer = await readStorageFile(cert.template.backgroundStorageKey);
+      } catch (bgErr) {
+        console.error('Warning: Failed to read template background for PDF rendering:', bgErr);
+      }
+    }
+
+    const fields: FieldConfig[] = cert.template?.fields ? JSON.parse(cert.template.fields) : [];
+
+    const buffer = await CertificateRendererService.renderCertificatePdf({
+      canvasWidth: cert.template?.canvasWidth || 1000,
+      canvasHeight: cert.template?.canvasHeight || 707,
+      backgroundBuffer,
+      fields,
+      contact: cert.contact || {
+        id: snapshot.contactId,
+        name: snapshot.contactName,
+        email: snapshot.contactEmail,
+        company: snapshot.contactCompany,
+        phone: snapshot.contactPhone,
+        jobTitle: snapshot.contactJobTitle,
+        department: snapshot.contactDepartment,
+        website: snapshot.contactWebsite,
+        linkedin: snapshot.contactLinkedin,
+        relationshipType: snapshot.contactRelationshipType,
+      },
+      certMeta: {
+        title: cert.title,
+        description: cert.description || undefined,
+        issueDate: cert.issueDate,
+        expiryDate: cert.expiryDate || undefined,
+        issuerName: cert.issuerName || undefined,
+        issuerTitle: cert.issuerTitle || undefined,
+      },
+      certificateNumber: cert.certificateNumber,
+    });
+
+    return { buffer, fileName, cert };
+  }
+
+  /**
+   * Create a ZIP file of multiple certificate PDFs for bulk download
+   */
+  static async createBulkZip(userId: string, certificateIds: string[]): Promise<Buffer> {
+    if (!certificateIds || certificateIds.length === 0) {
       throw new Error('No valid certificates found for ZIP generation');
     }
 
     const zip = new JSZip();
 
-    for (const cert of certs) {
-      if (cert.pdfStorageKey) {
-        try {
-          const pdfBuffer = await readStorageFile(cert.pdfStorageKey);
-          const snapshot = JSON.parse(cert.snapshotData);
-          const safeName = (snapshot.contactName || 'recipient').replace(/[^a-zA-Z0-9_-]/g, '_');
-          const zipFileName = `${cert.certificateNumber}_${safeName}.pdf`;
-
-          zip.file(zipFileName, pdfBuffer);
-        } catch (fileErr) {
-          console.error(`Failed to read PDF for certificate ${cert.certificateNumber}:`, fileErr);
-        }
+    for (const id of certificateIds) {
+      try {
+        const { buffer: pdfBuffer, fileName } = await this.getCertificatePdfBuffer(userId, id);
+        zip.file(fileName, pdfBuffer);
+      } catch (fileErr) {
+        console.error(`Failed to generate PDF for zip item ${id}:`, fileErr);
       }
     }
 
@@ -352,33 +418,24 @@ export class CertificateService {
     customSubject?: string,
     customBody?: string
   ) {
-    const cert = await prisma.certificate.findFirst({
-      where: { id: certificateId, userId },
-      include: { contact: true },
-    });
+    const { buffer: pdfBuffer, fileName: attachmentFilename, cert } = await this.getCertificatePdfBuffer(userId, certificateId);
 
-    if (!cert) {
-      throw new Error('Certificate not found or unauthorized');
+    const snapshot = JSON.parse(cert.snapshotData || '{}');
+    const recipientEmail = cert.contact?.email || snapshot.contactEmail;
+    const recipientName = cert.contact?.name || snapshot.contactName || 'Recipient';
+
+    if (!recipientEmail) {
+      throw new Error(`Contact '${recipientName}' has no email address`);
     }
 
-    if (!cert.contact?.email) {
-      throw new Error(`Contact '${cert.contact?.name || 'Recipient'}' has no email address`);
-    }
-
-    if (!cert.pdfStorageKey) {
-      throw new Error('Certificate PDF file is missing');
-    }
-
-    const pdfBuffer = await readStorageFile(cert.pdfStorageKey);
     const base64Pdf = pdfBuffer.toString('base64');
     const accessToken = await TokenManager.getValidAccessToken(userId);
 
-    const snapshot = JSON.parse(cert.snapshotData || '{}');
     const subject = customSubject || `Your Official Certificate: ${cert.title} (${cert.certificateNumber})`;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const htmlBody = customBody || `
       <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-        <h2 style="color: #4f46e5; margin-top: 0;">Dear ${snapshot.contactName || cert.contact.name},</h2>
+        <h2 style="color: #4f46e5; margin-top: 0;">Dear ${recipientName},</h2>
         <p style="font-size: 14px; line-height: 1.6;">
           Congratulations! Please find attached your official <strong>${cert.title}</strong> (Ref: <code>${cert.certificateNumber}</code>).
         </p>
@@ -396,11 +453,9 @@ export class CertificateService {
       </div>
     `;
 
-    const attachmentFilename = `${cert.certificateNumber}_${(cert.contact.name || 'Certificate').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
-
     await GmailClient.sendEmail(
       accessToken,
-      cert.contact.email,
+      recipientEmail,
       subject,
       htmlBody,
       [
@@ -414,7 +469,7 @@ export class CertificateService {
 
     return {
       success: true,
-      recipientEmail: cert.contact.email,
+      recipientEmail,
       certificateNumber: cert.certificateNumber,
     };
   }

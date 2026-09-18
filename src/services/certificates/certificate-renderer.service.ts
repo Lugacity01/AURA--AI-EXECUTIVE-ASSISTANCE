@@ -1,4 +1,4 @@
-import PDFDocument from 'pdfkit/js/pdfkit.standalone';
+import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { FieldConfig } from './types';
 import { resolveFieldValue } from './certificate-field-resolver';
@@ -37,7 +37,25 @@ export class CertificateRendererService {
       baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
     } = params;
 
-    return new Promise(async (resolve, reject) => {
+    // 1. Pre-render any QR Code buffers asynchronously before PDF stream initialization
+    const qrCodeBuffers = new Map<string, Buffer>();
+    for (const field of fields) {
+      if (field.type === 'QR_CODE') {
+        const verificationUrl = `${baseUrl}/certificate/${certificateNumber}`;
+        try {
+          const qrBuf = await QRCode.toBuffer(verificationUrl, {
+            margin: 1,
+            width: Math.max(20, Math.round(field.width || 100)),
+          });
+          qrCodeBuffers.set(field.id, qrBuf);
+        } catch (qrErr) {
+          console.error('Failed to generate QR Code buffer for field:', field.id, qrErr);
+        }
+      }
+    }
+
+    // 2. Synchronously construct PDFDocument
+    return new Promise((resolve, reject) => {
       try {
         const doc = new PDFDocument({
           size: [canvasWidth, canvasHeight],
@@ -53,14 +71,10 @@ export class CertificateRendererService {
         doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', (err: any) => reject(err));
 
-        // 1. Draw Background Image if present
+        // Draw Background Image if present
         if (backgroundBuffer && backgroundBuffer.length > 0) {
           try {
-            const isJpeg = backgroundBuffer[0] === 0xff && backgroundBuffer[1] === 0xd8 && backgroundBuffer[2] === 0xff;
-            const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
-            const bgDataUrl = `data:${mimeType};base64,${backgroundBuffer.toString('base64')}`;
-
-            doc.image(bgDataUrl, 0, 0, {
+            doc.image(backgroundBuffer, 0, 0, {
               width: canvasWidth,
               height: canvasHeight,
             });
@@ -69,23 +83,21 @@ export class CertificateRendererService {
           }
         }
 
-        // 2. Render Dynamic Fields
+        // Render Dynamic Fields
         for (const field of fields) {
           const resolvedValue = resolveFieldValue(field, contact, certMeta, certificateNumber);
 
           if (field.type === 'QR_CODE') {
-            const verificationUrl = `${baseUrl}/certificate/${certificateNumber}`;
-            try {
-              const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
-                margin: 1,
-                width: Math.round(field.width),
-              });
-              doc.image(qrDataUrl, field.x, field.y, {
-                width: field.width,
-                height: field.height,
-              });
-            } catch (qrErr) {
-              console.error('Failed to render QR Code on certificate PDF:', qrErr);
+            const qrBuf = qrCodeBuffers.get(field.id);
+            if (qrBuf) {
+              try {
+                doc.image(qrBuf, field.x, field.y, {
+                  width: field.width,
+                  height: field.height,
+                });
+              } catch (qrDrawErr) {
+                console.error('Failed to draw QR code on PDF:', qrDrawErr);
+              }
             }
             continue;
           }
@@ -116,7 +128,7 @@ export class CertificateRendererService {
             const minSize = field.minFontSize !== undefined && field.minFontSize !== null ? field.minFontSize : 2;
             const textWidth = doc.widthOfString(resolvedValue);
 
-            if (textWidth > field.width) {
+            if (textWidth > field.width && textWidth > 0) {
               const targetSize = Math.floor(currentFontSize * (field.width / textWidth));
               currentFontSize = Math.max(targetSize, minSize);
               doc.fontSize(currentFontSize);
@@ -128,7 +140,7 @@ export class CertificateRendererService {
           doc.fillColor(colorHex);
 
           // PDFKit alignment mapping
-          const pdfAlign = field.alignment || 'center';
+          const pdfAlign = (field.alignment || 'center') as 'left' | 'center' | 'right' | 'justify';
 
           // Render text box inside canonical bounding box (x, y, width, height)
           doc.text(resolvedValue, field.x, field.y, {
@@ -147,3 +159,4 @@ export class CertificateRendererService {
     });
   }
 }
+

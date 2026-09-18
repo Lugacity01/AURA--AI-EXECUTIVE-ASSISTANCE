@@ -23,7 +23,8 @@ import {
   MessageSquare,
   Clock,
   CornerDownLeft,
-  Megaphone
+  Megaphone,
+  Award
 } from "lucide-react";
 
 export default function DashboardLayout({
@@ -121,6 +122,7 @@ export default function DashboardLayout({
     { name: "Approvals", href: "/dashboard/approvals", icon: ShieldCheck, badge: stats.needsApproval > 0 ? String(stats.needsApproval) : undefined },
     { name: "Contacts", href: "/dashboard/contacts", icon: Users },
     { name: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
+    { name: "Certificates", href: "/dashboard/certificates", icon: Award },
     { name: "Activity", href: "/dashboard/activity", icon: Clock },
     { name: "Settings", href: "/dashboard/integrations", icon: Settings },
   ];

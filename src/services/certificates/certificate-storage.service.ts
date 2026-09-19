@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { getAppBaseUrl } from '@/lib/url-utils';
 
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
 const TEMPLATES_DIR = path.join(PUBLIC_DIR, 'uploads', 'certificates', 'templates');
@@ -103,8 +104,8 @@ export async function readStorageFile(storageKey: string): Promise<Buffer> {
       const tmpPath = path.join(TMP_DIR, filename);
       return await fs.readFile(tmpPath);
     } catch (tmpErr) {
-      // 5. Try fetching relative path from NEXT_PUBLIC_APP_URL or VERCEL_URL if available
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+      // 5. Try fetching relative path from dynamic app base URL
+      const baseUrl = getAppBaseUrl();
       if (baseUrl) {
         try {
           const fullUrl = `${baseUrl}${storageKey.startsWith('/') ? '' : '/'}${storageKey}`;

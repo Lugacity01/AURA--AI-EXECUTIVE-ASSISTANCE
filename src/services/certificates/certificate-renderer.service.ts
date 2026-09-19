@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { FieldConfig } from './types';
 import { resolveFieldValue } from './certificate-field-resolver';
+import { getAppBaseUrl } from '@/lib/url-utils';
 
 export interface RenderCertificateParams {
   canvasWidth: number;
@@ -34,8 +35,9 @@ export class CertificateRendererService {
       contact,
       certMeta,
       certificateNumber,
-      baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      baseUrl = params.baseUrl || getAppBaseUrl(),
     } = params;
+
 
     // 1. Pre-render any QR Code buffers asynchronously before PDF stream initialization
     const qrCodeBuffers = new Map<string, Buffer>();
